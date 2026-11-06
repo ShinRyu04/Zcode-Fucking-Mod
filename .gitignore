@@ -1,0 +1,31 @@
+# Secrets — never commit
+plan-jwt.json
+data/accounts.json
+data/*-jwt.json
+*.jwt
+.env
+
+# Build output
+/zcode-bridge
+/zcode-bridge.exe
+/zcode-bridge-*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Release staging
+/dist
+
+# Local runtime state (never commit)
+logs/
+*.log
+data/
+plan-jwt.json
+ZCODE_PLAN_JWT*
+
+# Local backups / build leftovers
+*.bak
+*.bak-*
+*.exe.bak*
+*.old
