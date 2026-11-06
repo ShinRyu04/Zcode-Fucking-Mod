@@ -203,6 +203,16 @@ Changes made in this fork, relative to upstream `azrinaldi/zcode-bridge`:
 3. **Hardened `.gitignore`** — never commit `data/`, `plan-jwt.json`, `logs/`,
    binaries, or `*.bak-*` backups.
 
+## Contributors
+
+**This fork** — maintained and modified by
+**[ShinRyu04](https://github.com/ShinRyu04)** (all changes listed in
+[Modifications](#modifications): plan-JWT expiry fix, Windows scripts, gitignore
+hardening, packaging and docs).
+
+**Upstream** — [azrinaldi](https://github.com/azrinaldi), original author of
+[zcode-bridge](https://github.com/azrinaldi/zcode-bridge), MIT licensed.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
