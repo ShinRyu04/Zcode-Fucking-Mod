@@ -22,7 +22,8 @@ versions follow [SemVer](https://semver.org/).
 - Dashboard speed panel: three native gauges (last request t/s, today's
   average, cache-hit rate), a 15-minute rolling chart at 10-second resolution,
   and exact token counts instead of abbreviated ones. `GET /overlay` serves the
-  same numbers as a compact one-second-refresh page for a floating window.
+  same numbers as a compact one-second-refresh page for a floating window;
+  `overlay.cmd` + `overlay.ps1` open it as a pinned Edge app window.
 - Dashboard playground: send a prompt to `/v1/chat/completions` (streaming or
   not) and see the answer, reasoning block, model and latency.
 - Usage metering: `GET /v1/usage` plus a **Penggunaan** dashboard tab. Each

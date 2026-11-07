@@ -287,8 +287,9 @@ Changes made in this fork, relative to upstream `azrinaldi/zcode-bridge`:
    inline SVG — no charts library, still stdlib only. The panel's gauges are
    reproduced natively (last request, today's average, cache-hit rate) along
    with a 15-minute rolling chart at 10-second resolution and a per-request
-   tier chart; `GET /overlay` is the floating-widget equivalent (a small page
-   you can pin on top with any browser window). The panel's network/upload
+   tier chart; `GET /overlay` is the floating-widget equivalent — run
+   `overlay.cmd` and it opens the page in an Edge app window pinned on top
+   (`overlay.ps1` does the pinning). The panel's network/upload
    counters are deliberately not ported: they read the desktop app's
    `db.sqlite` and process IO counters, which the bridge cannot and should not
    see. Files: `internal/usage`, `internal/server/usage.go`,
