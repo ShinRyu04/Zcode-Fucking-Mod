@@ -101,6 +101,7 @@ var (
 
 type settingsState struct {
 	enabled  bool
+	persist  bool
 	capacity int
 	bodyMax  int
 }
@@ -114,8 +115,13 @@ func Enabled() bool {
 func load() {
 	loadOnce.Do(func() {
 		settings.enabled = truthy(os.Getenv("ZCODE_CAPTURE"))
+		settings.persist = settings.enabled
 		settings.capacity = envInt("ZCODE_CAPTURE_SIZE", DefaultCapacity)
 		settings.bodyMax = envInt("ZCODE_CAPTURE_BODY_MAX", DefaultBodyMax)
+		if settings.enabled {
+			store.reset(settings.capacity)
+			store.restore(CaptureFilePath(), settings.capacity)
+		}
 	})
 }
 
@@ -130,6 +136,7 @@ func EnableForTest(capacity, bodyMax int) {
 		bodyMax = DefaultBodyMax
 	}
 	settings.enabled = true
+	settings.persist = false
 	settings.capacity = capacity
 	settings.bodyMax = bodyMax
 	store.reset(capacity)

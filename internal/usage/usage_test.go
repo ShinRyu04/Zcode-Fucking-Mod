@@ -35,6 +35,25 @@ func TestAggregatesTodayVersusAllTime(t *testing.T) {
 	}
 }
 
+func TestRingsTrackLastHighAndSevenDayAverage(t *testing.T) {
+	ResetForTest(t.TempDir())
+	now := time.Now()
+	Record(Row{At: now.AddDate(0, 0, -10), Model: "old", OutputTokens: 1000, GenMS: 1000, TPS: 1000})
+	Record(Row{At: now.Add(-time.Hour), Model: "glm-5.3-flash", OutputTokens: 200, GenMS: 1000, TPS: 200})
+	Record(Row{At: now, Model: "glm-5.3-flash", OutputTokens: 100, GenMS: 2000, TPS: 50})
+
+	rings := Current().Rings
+	if rings.LastTPS != 50 {
+		t.Fatalf("last tps = %v", rings.LastTPS)
+	}
+	if rings.HighTPS != 1000 {
+		t.Fatalf("high tps = %v", rings.HighTPS)
+	}
+	if rings.SevenDayAvgTPS != 100 {
+		t.Fatalf("7d avg tps = %v", rings.SevenDayAvgTPS)
+	}
+}
+
 func TestRowsSurviveRestart(t *testing.T) {
 	dir := t.TempDir()
 	ResetForTest(dir)
@@ -62,7 +81,7 @@ func TestDayRotationWritesOneFilePerDay(t *testing.T) {
 	}
 	want := map[string]bool{
 		"usage-" + dayKey(now.AddDate(0, 0, -1)) + ".jsonl": true,
-		"usage-" + dayKey(now) + ".jsonl":                  true,
+		"usage-" + dayKey(now) + ".jsonl":                   true,
 	}
 	for _, name := range files {
 		if !want[filepath.Base(name)] {

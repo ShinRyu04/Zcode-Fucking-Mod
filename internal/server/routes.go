@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"net/http"
@@ -12,9 +13,12 @@ import (
 	"github.com/azrinaldi/zcode-bridge/internal/accounts"
 	"github.com/azrinaldi/zcode-bridge/internal/auth"
 	"github.com/azrinaldi/zcode-bridge/internal/capture"
+	"github.com/azrinaldi/zcode-bridge/internal/claim"
 	"github.com/azrinaldi/zcode-bridge/internal/identity"
+	"github.com/azrinaldi/zcode-bridge/internal/netmon"
 	"github.com/azrinaldi/zcode-bridge/internal/quota"
 	"github.com/azrinaldi/zcode-bridge/internal/transport"
+	"github.com/azrinaldi/zcode-bridge/internal/webui"
 )
 
 // Route dispatches one request; handler errors that happen after the
@@ -45,8 +49,22 @@ func route(w http.ResponseWriter, r *http.Request) {
 	case r.Method == http.MethodGet && (pathName == "/v1/quota" || pathName == "/quota"):
 		handleQuota(w, r, accountID)
 	case r.Method == http.MethodGet && pathName == "/dashboard":
+		webui.Page(w, r)
+	case r.Method == http.MethodGet && pathName == "/chat":
+		webui.Page(w, r)
+	case r.Method == http.MethodGet && pathName == "/classic":
 		handleDashboard(w)
-	case r.Method == http.MethodGet && pathName == "/overlay":
+	case r.Method == http.MethodGet && strings.HasPrefix(pathName, "/assets/"):
+		webui.Asset(w, r)
+	case r.Method == http.MethodGet && pathName == "/v1/events":
+		if requireObservabilityToken(w, r) {
+			handleEvents(w, r)
+		}
+	case r.Method == http.MethodGet && pathName == "/v1/settings":
+		if requireObservabilityToken(w, r) {
+			handleSettings(w, r)
+		}
+	case r.Method == http.MethodGet && (pathName == "/overlay" || strings.HasPrefix(pathName, "/overlay/")):
 		handleOverlay(w, r)
 	case r.Method == http.MethodGet && (pathName == "/inspect" || pathName == "/inspector"):
 		if requireObservabilityToken(w, r) {
@@ -56,12 +74,50 @@ func route(w http.ResponseWriter, r *http.Request) {
 		if requireObservabilityToken(w, r) {
 			handleInspectClear(w)
 		}
+	case r.Method == http.MethodPost && pathName == "/inspect/replay":
+		if requireObservabilityToken(w, r) {
+			handleInspectReplay(w, r)
+		}
+	case r.Method == http.MethodGet && pathName == "/v1/claim/history":
+		if requireObservabilityToken(w, r) {
+			handleClaimHistory(w, r)
+		}
+	case r.Method == http.MethodGet && pathName == "/v1/claim":
+		if requireObservabilityToken(w, r) {
+			handleClaimList(w, r)
+		}
+	case r.Method == http.MethodPost && pathName == "/v1/claim":
+		if requireObservabilityToken(w, r) {
+			handleClaimNow(w, r)
+		}
+	case r.Method == http.MethodGet && pathName == "/v1/accounts":
+		if requireObservabilityToken(w, r) {
+			handleAccountsList(w)
+		}
+	case r.Method == http.MethodPost && pathName == "/v1/accounts/switch":
+		if requireObservabilityToken(w, r) {
+			handleAccountSwitch(w, r)
+		}
 	case r.Method == http.MethodGet && pathName == "/v1/usage":
 		if requireObservabilityToken(w, r) {
 			handleUsage(w, r)
 		}
+	case r.Method == http.MethodGet && pathName == "/v1/net":
+		if requireObservabilityToken(w, r) {
+			sendJSON(w, 200, netmon.Current())
+		}
 	case (r.Method == http.MethodGet || r.Method == http.MethodPost || r.Method == http.MethodDelete) && pathName == "/mcp":
 		handleMCP(w, r)
+	case r.Method == http.MethodGet && pathName == "/async/v1/health":
+		handleAsyncHealth(w, r)
+	case r.Method == http.MethodPost && pathName == "/async/v1/messages":
+		requireAuth(w, r, "anthropic", func() {
+			handleAsyncMessages(w, r, accountID)
+		})
+	case r.Method == http.MethodPost && pathName == "/async/v1/chat/completions":
+		requireAuth(w, r, "openai", func() {
+			handleAsyncChat(w, r, accountID)
+		})
 	case r.Method == http.MethodPost && pathName == "/v1/messages":
 		requireAuth(w, r, "anthropic", func() {
 			handlePost(w, r, accountID, handleMessages)
@@ -130,6 +186,12 @@ func handlePost(w http.ResponseWriter, r *http.Request, accountID string, handle
 
 // handleHealth reports lane, credential and rotation state (no secrets).
 func handleHealth(w http.ResponseWriter) {
+	sendJSON(w, 200, healthPayload())
+}
+
+// healthPayload is shared by /health and the SSE snapshot so both report the
+// same credential state.
+func healthPayload() map[string]any {
 	ring := accounts.Summarize()
 	deviceMid := identity.ResolveDeviceMid()
 	planJwt := map[string]any{"present": false}
@@ -150,7 +212,7 @@ func handleHealth(w http.ResponseWriter) {
 	if cfg.BridgeToken != "" {
 		authMode = "bridge token required"
 	}
-	sendJSON(w, 200, map[string]any{
+	return map[string]any{
 		"ok":            true,
 		"lane":          "zcode-plan/anthropic",
 		"upstream":      transport.InferenceOrigin + transport.PlanAnthropicPath,
@@ -165,7 +227,7 @@ func handleHealth(w http.ResponseWriter) {
 		"planJwt":  planJwt,
 		"auth":     authMode,
 		"version":  identity.ResolveAppVersion(),
-	})
+	}
 }
 
 // handleQuota serves the billing readout for the first usable account (or
@@ -222,6 +284,8 @@ func cors(w http.ResponseWriter, r *http.Request) bool {
 // server's 65s values so long SSE streams survive intermediary idle cuts.
 func ListenAndServe() error {
 	addr := net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.Port))
+	netmon.Start(cfg.Port)
+	claim.Start(context.Background())
 	srv := &http.Server{
 		Addr:              addr,
 		Handler:           Route(),

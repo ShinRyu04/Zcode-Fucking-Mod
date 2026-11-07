@@ -9,6 +9,8 @@ data/*-jwt.json
 /zcode-bridge
 /zcode-bridge.exe
 /zcode-bridge-*
+/zcode-companion
+/zcode-companion.exe
 
 # OS
 .DS_Store
@@ -29,3 +31,4 @@ ZCODE_PLAN_JWT*
 *.bak-*
 *.exe.bak*
 *.old
+*~

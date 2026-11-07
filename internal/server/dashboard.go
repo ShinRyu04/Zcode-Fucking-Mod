@@ -93,6 +93,8 @@ td.path{max-width:340px;overflow:hidden;text-overflow:ellipsis;font-family:ui-mo
 .detail{border-top:1px solid var(--line);margin-top:14px;padding-top:6px}
 .dhead{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:10px 0 4px;overflow-wrap:anywhere}
 .dhead code{font-size:13px}
+.actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:4px 0 10px;font-size:12px}
+.actions .dim{font-size:11px}
 .cols{display:grid;grid-template-columns:1fr 1fr;gap:20px}
 pre{background:#0f131b;border:1px solid var(--line);border-radius:8px;padding:12px;margin:0;font-size:12.5px;line-height:1.5;overflow:auto;max-height:340px;white-space:pre-wrap;overflow-wrap:anywhere}
 .events{display:grid;gap:6px}
@@ -118,6 +120,20 @@ pre{background:#0f131b;border:1px solid var(--line);border-radius:8px;padding:12
 @media (prefers-reduced-motion:reduce){.fill{transition:none}}
 @media (max-width:760px){.cols{grid-template-columns:1fr}.toolbtns{margin-left:0;width:100%}.toolbtns .btn,.toolbtns button{flex:1 1 auto;text-align:center}}
 @media (max-width:560px){.big{font-size:26px}.card{padding:16px}th,td{white-space:normal;overflow-wrap:anywhere}td.path{max-width:none}}
+.modules{border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin:0 0 18px;background:#0d1119}
+.modules summary{cursor:pointer;font-size:13px;color:var(--dim);font-weight:600}
+.modgrid{display:flex;flex-wrap:wrap;gap:10px 22px;margin-top:10px;font-size:13px}
+.modgrid label{display:inline-flex;align-items:center;gap:6px;cursor:pointer}
+.modgrid input{accent-color:#34d399}
+.statusbar{position:sticky;bottom:0;display:flex;flex-wrap:wrap;gap:6px 18px;align-items:center;font-size:12px;color:var(--dim);background:rgba(9,12,17,.96);border:1px solid var(--line);border-radius:10px;padding:8px 14px;margin:18px 0 6px;font-variant-numeric:tabular-nums;z-index:5}
+.statusbar b{color:var(--fg);font-weight:600}
+.statusbar .sep{color:#2a3242}
+.netgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin:10px 0}
+.netstat{background:#0f131b;border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.netstat span{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--dim)}
+.netstat b{display:block;font-size:20px;font-weight:800;margin-top:3px;font-variant-numeric:tabular-nums}
+.netstat small{display:block;color:var(--dim);font-size:11px;margin-top:2px}
+@media (max-width:560px){.statusbar{font-size:11px}}
 </style>
 </head>
 <body>
@@ -134,6 +150,11 @@ pre{background:#0f131b;border:1px solid var(--line);border-radius:8px;padding:12
 <button role="tab" id="tab-playground" aria-controls="panel-playground" aria-selected="false" data-panel="panel-playground">Playground</button>
 </div>
 
+<details class="modules" id="modules">
+<summary>Modul tampilan</summary>
+<div class="modgrid" id="modgrid" aria-label="Pilih modul dashboard"></div>
+</details>
+
 <main>
 <section class="card" id="tokenask" hidden aria-label="Token bridge">
 <h2>Token bridge diperlukan</h2>
@@ -148,6 +169,17 @@ pre{background:#0f131b;border:1px solid var(--line);border-radius:8px;padding:12
 <section id="panel-status" role="tabpanel" aria-labelledby="tab-status">
 <section class="card" id="health" aria-label="Kredensial dan lane"><h2>Kredensial dan lane</h2><p class="note">memuat...</p></section>
 <section class="card" id="quota" aria-label="Kuota plan"><h2>Kuota plan</h2><p class="note">memuat...</p></section>
+<section class="card" id="claimcard" aria-label="Klaim plan">
+<h2>Klaim plan <span class="dim" style="text-transform:none;letter-spacing:0;font-weight:400">weekend / trial</span></h2>
+<div class="actions"><button type="button" id="claimlist">Cek plan</button><span class="dim" id="claimstate"></span></div>
+<div id="claimbox"><p class="note">Tekan Cek plan untuk melihat kampanye yang bisa diklaim.</p></div>
+</section>
+<section class="card" id="netcard" aria-label="Monitor jaringan">
+<h2>Monitor jaringan <span class="dim" id="netstate" style="text-transform:none;letter-spacing:0;font-weight:400"></span></h2>
+<div class="netgrid" id="netsum"><div class="netstat"><span>Turun</span><b>-</b></div></div>
+<div id="netif" class="tablewrap"></div>
+<div id="netproc"></div>
+</section>
 </section>
 
 <section id="panel-inspector" role="tabpanel" aria-labelledby="tab-inspector" hidden>
@@ -178,6 +210,7 @@ pre{background:#0f131b;border:1px solid var(--line);border-radius:8px;padding:12
 <button type="button" id="irefresh">Muat ulang</button>
 <button type="button" id="iclear" class="danger">Bersihkan</button>
 <a class="btn" id="iexport" href="/inspect?limit=200&amp;full=1" download="zcode-inspect.json">Ekspor JSON</a>
+<a class="btn" id="ihar" href="/inspect?format=har&amp;limit=50" download="zcode-session.har">Ekspor HAR</a>
 </div>
 </div>
 <p class="qnote" id="istate">memuat...</p>
@@ -194,8 +227,11 @@ pre{background:#0f131b;border:1px solid var(--line);border-radius:8px;padding:12
 <div class="meta" id="utotals"></div>
 <h3>Semua waktu</h3>
 <div class="meta" id="ualltime"></div>
-<h3>Kecepatan 15 menit terakhir <span class="dim" style="text-transform:none;letter-spacing:0;font-weight:400">· 10 detik per titik</span></h3>
+<h3>Kecepatan <span class="dim" style="text-transform:none;letter-spacing:0;font-weight:400">· pilih rentang</span></h3>
+<div class="toolbtns" id="urange" role="group" aria-label="Rentang kecepatan"></div>
 <div id="uroll"></div>
+<h3>Tren per model</h3>
+<div id="umtrend"></div>
 <h3>Kecepatan per permintaan terakhir</h3>
 <div id="uchart"></div>
 <h3>Per model</h3>
@@ -226,6 +262,15 @@ pre{background:#0f131b;border:1px solid var(--line);border-radius:8px;padding:12
 </div>
 </section>
 </main>
+
+<div class="statusbar" id="statusbar" role="status" aria-live="polite">
+<span>lane <b id="sb-lane">-</b></span><span class="sep">·</span>
+<span>akun <b id="sb-acc">-</b></span><span class="sep">·</span>
+<span>permintaan <b id="sb-req">-</b></span><span class="sep">·</span>
+<span>kecepatan <b id="sb-tps">-</b></span><span class="sep">·</span>
+<span>jaringan <b id="sb-net">-</b></span><span class="sep">·</span>
+<span id="sb-state">memuat...</span>
+</div>
 
 <footer>
 <div class="controls">
@@ -276,6 +321,7 @@ byId('tokensave').addEventListener('click', function(){
   byId('tokeninput').value = '';
   loadInspector();
 });
+byId('claimlist').addEventListener('click', loadClaimPlans);
 
 // ---- status tab ----
 function renderHealth(h){
@@ -293,6 +339,13 @@ function renderHealth(h){
     +'</div>';
   var accs = h.accounts || [];
   if(accs.length){
+    var opts = '';
+    for(var j=0;j<accs.length;j++){
+      var aj = accs[j];
+      opts += '<option value="'+esc(aj.id)+'"'+(aj.default?' selected':'')+'>'+esc(aj.label||aj.id)+(aj.needsReauth?' (perlu login)':'')+'</option>';
+    }
+    html += '<div class="actions"><label class="field" style="flex-direction:row;align-items:center;gap:8px"><span>Akun aktif</span><select id="accsel">'+opts+'</select></label>'
+      +'<button type="button" id="accapply">Terapkan</button><span class="dim" id="accstate"></span></div>';
     html += '<div class="tablewrap"><table><tr><th>Akun</th><th>Email</th><th>Status</th><th>Refresh token</th><th class="num">Kedaluwarsa</th></tr>';
     for(var i=0;i<accs.length;i++){
       var a = accs[i];
@@ -313,7 +366,77 @@ function renderHealth(h){
     html += '<p class="note">Belum ada akun terdaftar. Jalankan <code>zcode-bridge login</code> untuk menambahkan.</p>';
   }
   el.className='card';el.innerHTML=html;
+  var accApply = byId('accapply');
+  if(accApply) accApply.addEventListener('click', switchAccount);
   byId('ver').textContent = h.version ? ' · v'+h.version : '';
+  sb('lane', h.lane || '-');
+  var primary = (accs.filter(function(a){ return a.default; })[0]) || accs[0];
+  sb('acc', primary ? (primary.label || primary.id || '-') : 'belum ada');
+}
+
+function switchAccount(){
+  var sel = byId('accsel');
+  var note = byId('accstate');
+  if(!sel) return;
+  var id = sel.value;
+  if(note) note.textContent = 'menerapkan...';
+  api('/v1/accounts/switch', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({id:id})}).then(function(res){
+    if(!res || res.ok === false){
+      if(note) note.textContent = 'gagal: '+((res&&res.error)||'tidak diketahui');
+      return;
+    }
+    if(note) note.textContent = 'akun aktif: '+id;
+    tick();
+  }).catch(function(e){
+    if(note) note.textContent = 'gagal: '+e.message;
+  });
+}
+
+function loadClaimPlans(){
+  var box = byId('claimbox');
+  var note = byId('claimstate');
+  if(note) note.textContent = 'memuat...';
+  api('/v1/claim').then(function(res){
+    if(!res || res.ok === false){
+      box.innerHTML = '<p class="note">Gagal: '+esc((res&&res.error)||'tidak diketahui')+'</p>';
+      if(note) note.textContent = '';
+      return;
+    }
+    if(note) note.textContent = (res.enabled?'auto '+(res.auto?'aktif':'nonaktif'):'nonaktif');
+    var plans = res.plans || [];
+    if(!plans.length){
+      box.innerHTML = '<p class="note">Tidak ada kampanye aktif untuk akun ini.</p>';
+      return;
+    }
+    var html = '<div class="tablewrap"><table><tr><th>Plan</th><th>Sumber</th><th class="num">Prioritas</th><th></th></tr>';
+    for(var i=0;i<plans.length;i++){
+      var p = plans[i];
+      html += '<tr><td>'+esc(p.name||p.plan_id)+'</td><td class="dim">'+esc(p.source||'-')+'</td>'
+        +'<td class="num">'+(Number(p.priority)||0)+'</td>'
+        +'<td><button type="button" class="claimbtn" data-plan="'+esc(p.plan_id)+'">Klaim</button></td></tr>';
+    }
+    box.innerHTML = html+'</table></div>';
+    var btns = box.querySelectorAll('.claimbtn');
+    for(var j=0;j<btns.length;j++) btns[j].addEventListener('click', function(){ claimPlan(this.getAttribute('data-plan')); });
+  }).catch(function(e){
+    box.innerHTML = '<p class="note">Gagal: '+esc(e.message)+'</p>';
+    if(note) note.textContent = '';
+  });
+}
+function claimPlan(planId){
+  if(!window.confirm('Klaim plan '+planId+' sekarang?')) return;
+  var note = byId('claimstate');
+  if(note) note.textContent = 'mengklaim '+planId+'...';
+  api('/v1/claim', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({plan_id:planId})}).then(function(res){
+    if(!res || res.ok === false){
+      if(note) note.textContent = 'gagal: '+((res&&res.error)||'tidak diketahui');
+      return;
+    }
+    if(note) note.textContent = 'plan '+planId+' diklaim';
+    tick();
+  }).catch(function(e){
+    if(note) note.textContent = 'gagal: '+e.message;
+  });
 }
 
 function renderQuota(res){
@@ -435,6 +558,9 @@ function renderDetail(){
   if(!ex){ el.innerHTML = '<p class="note">Pilih satu entri untuk melihat header, body, dan waktu.</p>'; return; }
   var html = '<div class="detail">'
     +'<div class="dhead"><span class="mth">'+esc(ex.method)+'</span><code>'+esc(ex.path)+'</code>'+statusTag(ex)+'</div>'
+    +'<div class="actions"><button type="button" id="ireplay">Putar ulang</button>'
+    +'<a class="btn" href="/inspect?format=har&amp;limit=50" download="zcode-session.har">Ekspor HAR</a>'
+    +'<span class="dim" id="irstate">replay memanggil lane lagi (memakai kuota).</span></div>'
     +'<div class="meta">'
     +'<div><span>Rute</span><b>'+esc(ex.route||'-')+'</b></div>'
     +'<div><span>Model</span><b>'+esc(ex.model||'-')+'</b></div>'
@@ -473,6 +599,23 @@ function renderDetail(){
     +'<h3>Response body</h3><pre>'+esc(pretty(ex.response_body))+'</pre></div>'
     +'</div></div>';
   el.innerHTML = html;
+  var rp = byId('ireplay');
+  if(rp) rp.addEventListener('click', function(){ replayDetail(ex.id); });
+}
+function replayDetail(id){
+  if(!window.confirm('Putar ulang permintaan ini melalui lane? Ini memakai kuota plan dan menambah entri capture.')) return;
+  var btn = byId('ireplay');
+  var note = byId('irstate');
+  if(btn){ btn.disabled = true; btn.textContent = 'memutar...'; }
+  api('/inspect/replay?id='+encodeURIComponent(id), {method:'POST'}).then(function(res){
+    if(!res || res.ok === false){ if(note) note.textContent = 'replay gagal: '+((res&&res.error)||'tidak diketahui'); return; }
+    if(note) note.textContent = 'replay '+res.status+' · '+(res.truncated?'body dipotong':'selesai');
+    loadInspector();
+  }).catch(function(e){
+    if(note) note.textContent = 'replay gagal: '+e.message;
+  }).then(function(){
+    if(btn){ btn.disabled = false; btn.textContent = 'Putar ulang'; }
+  });
 }
 function loadDetail(id){
   INS.selected = id;
@@ -524,6 +667,7 @@ byId('istatus').addEventListener('change', renderList);
 byId('iq').addEventListener('input', renderList);
 byId('irefresh').addEventListener('click', loadInspector);
 bindDesktopControls();
+bindUsageControls();
 byId('iclear').addEventListener('click', function(){
   if(!window.confirm('Hapus semua entri yang terekam?')) return;
   api('/inspect',{method:'DELETE'}).then(function(){
@@ -547,7 +691,7 @@ byId('iexport').addEventListener('click', function(ev){
 });
 
 // ---- usage tab ----
-var USAGE = { loaded:false };
+var USAGE = { loaded:false, recent:[] };
 function tpsColor(v){
   if(v < 40) return '#34d399';
   if(v < 80) return '#a3e635';
@@ -599,58 +743,145 @@ function cacheRate(today){
   var total = cached + fresh;
   return total ? cached / total * 100 : 0;
 }
-function renderRolling(recent){
-  var span = 15 * 60 * 1000, step = 10 * 1000, n = 90, nowMs = Date.now();
+// ---- bridge usage ranges and per-model trend ----
+var URANGES = [['1h', '1 jam'], ['6h', '6 jam'], ['24h', '24 jam'], ['7d', '7 hari']];
+var URANGE_MS = { '1h': 3600e3, '6h': 21600e3, '24h': 86400e3, '7d': 604800e3 };
+var URANGE = localStorage.getItem('zcode.usageRange') || '1h';
+var MODEL_COLORS = ['#34d399', '#60a5fa', '#fbbf24', '#f472b6', '#a3e635'];
+function rangeSpan(key){ return URANGE_MS[key] || URANGE_MS['1h']; }
+function rangeLabel(key){
+  for(var i = 0; i < URANGES.length; i++){ if(URANGES[i][0] === key) return URANGES[i][1]; }
+  return key;
+}
+// bucketRows splits measured rows into n equal time buckets over the
+// selected span. Each bucket keeps summed output tokens and generation time,
+// so the plotted value is a weighted tok/dtk, not an average of averages.
+function bucketRows(recent, key, n){
+  var span = rangeSpan(key), nowMs = Date.now(), start = nowMs - span;
   var buckets = [], i;
-  for(i = 0; i < n; i++) buckets.push({out: 0, ms: 0});
+  for(i = 0; i < n; i++) buckets.push({out: 0, ms: 0, count: 0});
   (recent || []).forEach(function(row){
+    if(Number(row.tps) <= 0) return;
     var t = new Date(row.at).getTime();
-    if(isNaN(t)) return;
-    var age = nowMs - t;
-    if(age < 0 || age >= span) return;
-    var idx = n - 1 - Math.floor(age / step);
-    if(idx < 0 || idx >= n) return;
-    if(Number(row.tps) > 0){
-      buckets[idx].out += Number(row.output_tokens) || 0;
-      buckets[idx].ms += Number(row.gen_ms) || 0;
-    }
+    if(isNaN(t) || t < start || t > nowMs) return;
+    var idx = Math.floor((t - start) / span * n);
+    if(idx < 0) idx = 0;
+    if(idx >= n) idx = n - 1;
+    buckets[idx].out += Number(row.output_tokens) || 0;
+    buckets[idx].ms += Number(row.gen_ms) || 0;
+    buckets[idx].count++;
   });
-  var vals = buckets.map(function(b){ return b.ms > 0 ? b.out / b.ms * 1000 : 0; });
-  var peak = vals.reduce(function(a, b){ return b > a ? b : a; }, 0);
-  if(peak <= 0) return '<div class="emptystate">Belum ada permintaan streaming dalam 15 menit terakhir.</div>';
-  var yMax = Math.max(60, Math.ceil(peak / 60) * 60), W = 600, H = 130;
-  var line = vals.map(function(v, i){
-    return (i ? 'L' : 'M') + (i / (n - 1) * W).toFixed(1) + ' ' + (H - v / yMax * H).toFixed(1);
+  return buckets;
+}
+function bucketTps(b){ return b.ms > 0 ? b.out / (b.ms / 1000) : 0; }
+function linePath(vals, W, H, yMax){
+  return vals.map(function(v, i){
+    return (i ? 'L' : 'M') + (i / (vals.length - 1) * W).toFixed(1) + ' ' + (H - v / yMax * H).toFixed(1);
   }).join(' ');
+}
+function renderRangeChart(recent){
+  var n = 60, buckets = bucketRows(recent, URANGE, n);
+  var vals = buckets.map(bucketTps);
+  var peak = vals.reduce(function(a, b){ return b > a ? b : a; }, 0);
+  if(peak <= 0) return '<div class="emptystate">Belum ada permintaan streaming pada rentang ' + esc(rangeLabel(URANGE)) + '.</div>';
+  var yMax = Math.max(60, Math.ceil(peak / 60) * 60), W = 600, H = 130;
   var grid = [0.25, 0.5, 0.75].map(function(f){
     var y = (H - f * H).toFixed(1);
     return '<line x1="0" y1="' + y + '" x2="' + W + '" y2="' + y + '" stroke="#1c222e" vector-effect="non-scaling-stroke"/>';
   }).join('');
-  return '<div class="chartwrap"><svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Kecepatan generasi 15 menit terakhir" preserveAspectRatio="none">'
+  var line = linePath(vals, W, H, yMax);
+  return '<div class="chartwrap"><svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Kecepatan generasi ' + esc(rangeLabel(URANGE)) + '" preserveAspectRatio="none">'
     + grid + '<path d="' + line + ' L' + W + ' ' + H + ' L0 ' + H + ' Z" fill="rgba(52,211,153,.12)"/>'
     + '<path d="' + line + '" fill="none" stroke="#34d399" stroke-width="1.6" vector-effect="non-scaling-stroke"/></svg></div>'
-    + '<div class="legend"><span>puncak ' + fmtTps(peak) + ' tok/dtk</span><span class="dim">skala 0-' + yMax + ' tok/dtk</span></div>';
+    + '<div class="legend"><span>puncak bucket ' + fmtTps(peak) + ' tok/dtk</span><span class="dim">' + esc(rangeLabel(URANGE)) + ' · skala 0-' + yMax + ' tok/dtk</span></div>';
+}
+function renderModelTrend(recent){
+  var n = 60, span = rangeSpan(URANGE), nowMs = Date.now(), start = nowMs - span;
+  var perModel = {}, totals = {};
+  (recent || []).forEach(function(row){
+    if(Number(row.tps) <= 0) return;
+    var t = new Date(row.at).getTime();
+    if(isNaN(t) || t < start || t > nowMs) return;
+    var name = row.model || 'unknown';
+    if(!perModel[name]){
+      perModel[name] = [];
+      for(var i = 0; i < n; i++) perModel[name].push({out: 0, ms: 0, count: 0});
+      totals[name] = 0;
+    }
+    var idx = Math.floor((t - start) / span * n);
+    if(idx < 0) idx = 0;
+    if(idx >= n) idx = n - 1;
+    perModel[name][idx].out += Number(row.output_tokens) || 0;
+    perModel[name][idx].ms += Number(row.gen_ms) || 0;
+    perModel[name][idx].count++;
+    totals[name] += Number(row.output_tokens) || 0;
+  });
+  var names = Object.keys(perModel).sort(function(a, b){ return totals[b] - totals[a]; });
+  if(!names.length) return '<div class="emptystate">Belum ada model terukur pada rentang ' + esc(rangeLabel(URANGE)) + '.</div>';
+  if(names.length > 5) names = names.slice(0, 5);
+  var series = names.map(function(name){
+    return {name: name, vals: perModel[name].map(bucketTps)};
+  });
+  var peak = 0;
+  series.forEach(function(s){ s.vals.forEach(function(v){ if(v > peak) peak = v; }); });
+  if(peak <= 0) return '<div class="emptystate">Belum ada model terukur pada rentang ' + esc(rangeLabel(URANGE)) + '.</div>';
+  var yMax = Math.max(60, Math.ceil(peak / 60) * 60), W = 600, H = 130;
+  var grid = [0.25, 0.5, 0.75].map(function(f){
+    var y = (H - f * H).toFixed(1);
+    return '<line x1="0" y1="' + y + '" x2="' + W + '" y2="' + y + '" stroke="#1c222e" vector-effect="non-scaling-stroke"/>';
+  }).join('');
+  var paths = series.map(function(s, i){
+    var color = MODEL_COLORS[i % MODEL_COLORS.length];
+    return '<path d="' + linePath(s.vals, W, H, yMax) + '" fill="none" stroke="' + color + '" stroke-width="1.6" vector-effect="non-scaling-stroke"/>';
+  }).join('');
+  var legend = series.map(function(s, i){
+    return '<span><span class="swatch" style="background:' + MODEL_COLORS[i % MODEL_COLORS.length] + '"></span>' + esc(s.name) + '</span>';
+  }).join('');
+  return '<div class="chartwrap"><svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Tren kecepatan per model" preserveAspectRatio="none">'
+    + grid + paths + '</svg></div><div class="legend">' + legend + '<span class="dim">skala 0-' + yMax + ' tok/dtk</span></div>';
+}
+function renderRangeButtons(){
+  byId('urange').innerHTML = URANGES.map(function(r){
+    return '<button type="button" data-ur="' + r[0] + '" aria-pressed="' + (URANGE === r[0]) + '">' + r[1] + '</button>';
+  }).join('');
+}
+function bindUsageControls(){
+  byId('urange').addEventListener('click', function(e){
+    var b = e.target.closest('button[data-ur]');
+    if(!b) return;
+    URANGE = b.getAttribute('data-ur');
+    localStorage.setItem('zcode.usageRange', URANGE);
+    renderRangeButtons();
+    var recent = USAGE.recent || [];
+    byId('uroll').innerHTML = renderRangeChart(recent);
+    byId('umtrend').innerHTML = renderModelTrend(recent);
+  });
 }
 function renderUsage(res){
   renderDesktop(res.desktop);
   var today = res.today || {}, allTime = res.all_time || {};
+  var rings = res.rings || {};
   byId('ustate').textContent = today.requests ? today.requests + ' permintaan hari ini' : '';
   var last = null;
   (res.recent || []).forEach(function(row){ if(Number(row.tps) > 0) last = row; });
-  var avg = Number(today.avg_tps) || 0;
+  var lastTps = Number(rings.last_tps) || (last ? Number(last.tps) : 0);
+  var highTps = Number(rings.high_tps) || Number(allTime.high_tps) || lastTps;
+  var weekAvg = Number(rings.seven_day_avg_tps) || 0;
   var hit = cacheRate(today);
+  renderRangeButtons();
   byId('uga').innerHTML =
-    gaugeCard(last ? Number(last.tps) : 0, Math.max(120, Math.ceil((last ? Number(last.tps) : 0) / 40) * 40), tpsColor(last ? Number(last.tps) : 0),
-      'Kecepatan terakhir', last ? fmtTps(last.tps) : '-', 'tok/dtk', last ? last.model + ' · ' + whenISO(last.at) : 'belum ada stream')
-    + gaugeCard(avg, Math.max(80, Math.ceil(avg / 40) * 40), tpsColor(avg),
-      'Rata-rata hari ini', fmtTps(avg), 'tok/dtk', (today.requests || 0) + ' permintaan · hanya streaming')
-    + gaugeCard(hit, 100, '#34d399', 'Cache hit hari ini', hit.toFixed(1) + '%', 'dari token masuk',
-      fmtN(today.cache_read_tokens) + ' dari ' + fmtN((Number(today.cache_read_tokens) || 0) + (Number(today.input_tokens) || 0)));
+    gaugeCard(lastTps, Math.max(120, Math.ceil(lastTps / 40) * 40), tpsColor(lastTps),
+      'Kecepatan terakhir', last ? fmtTps(lastTps) : '-', 'tok/dtk', last ? last.model + ' · ' + whenISO(last.at) : 'belum ada stream')
+    + gaugeCard(highTps, Math.max(120, Math.ceil(highTps / 40) * 40), tpsColor(highTps),
+      'Tertinggi', fmtTps(highTps), 'tok/dtk', 'puncak satu permintaan')
+    + gaugeCard(weekAvg, Math.max(80, Math.ceil(weekAvg / 40) * 40), tpsColor(weekAvg),
+      'Rata-rata 7 hari', fmtTps(weekAvg), 'tok/dtk', 'dari baris tersimpan');
   var totals = [
     ['Permintaan', fmtN(today.requests)],
     ['Token masuk', fmtN(today.input_tokens)],
     ['Token keluar', fmtN(today.output_tokens)],
-    ['Cache dibaca', fmtN(today.cache_read_tokens)]
+    ['Cache dibaca', fmtN(today.cache_read_tokens)],
+    ['Cache hit', hit.toFixed(1) + '%']
   ].map(function(t){ return '<div><span>' + t[0] + '</span><b>' + t[1] + '</b></div>'; }).join('');
   if(today.requests) totals += '<div><span>Rata-rata tok/dtk</span><b>' + fmtTps(today.avg_tps) + '</b></div>';
   byId('utotals').innerHTML = totals;
@@ -659,10 +890,15 @@ function renderUsage(res){
     ['Token masuk', fmtN(allTime.input_tokens)],
     ['Token keluar', fmtN(allTime.output_tokens)],
     ['Cache dibaca', fmtN(allTime.cache_read_tokens)],
-    ['Rata-rata tok/dtk', fmtTps(allTime.avg_tps)]
+    ['Rata-rata tok/dtk', fmtTps(allTime.avg_tps)],
+    ['Tertinggi', fmtTps(allTime.high_tps)]
   ].map(function(t){ return '<div><span>' + t[0] + '</span><b>' + t[1] + '</b></div>'; }).join('');
-  byId('uroll').innerHTML = renderRolling(res.recent);
-  byId('uchart').innerHTML = renderUsageChart(res.recent);
+  USAGE.recent = res.recent || [];
+  sb('req', fmtN(today.requests || 0));
+  sb('tps', fmtTps(lastTps) + ' tok/dtk');
+  byId('uroll').innerHTML = renderRangeChart(USAGE.recent);
+  byId('umtrend').innerHTML = renderModelTrend(USAGE.recent);
+  byId('uchart').innerHTML = renderUsageChart(USAGE.recent);
   var models = today.per_model || {};
   var names = Object.keys(models).sort(function(a, b){ return models[b].requests - models[a].requests; });
   if(!names.length){
@@ -885,6 +1121,104 @@ function pSend(){
 byId('psend').addEventListener('click', pSend);
 byId('pmsg').addEventListener('keydown', function(ev){ if(ev.key === 'Enter'){ ev.preventDefault(); pSend(); } });
 
+// ---- module settings ----
+var MODULE_DEFS = [
+  {key:'status', label:'Status', tab:'tab-status', panel:'panel-status'},
+  {key:'inspector', label:'Inspector', tab:'tab-inspector', panel:'panel-inspector'},
+  {key:'usage', label:'Penggunaan', tab:'tab-usage', panel:'panel-usage'},
+  {key:'playground', label:'Playground', tab:'tab-playground', panel:'panel-playground'},
+  {key:'net', label:'Monitor jaringan', card:'netcard'}
+];
+var MODULES = (function(){
+  var stored = null;
+  try { stored = JSON.parse(localStorage.getItem('zcode.modules') || 'null'); } catch(e){ stored = null; }
+  var on = {};
+  MODULE_DEFS.forEach(function(m){ on[m.key] = stored ? stored[m.key] !== false : true; });
+  return on;
+})();
+function renderModules(){
+  byId('modgrid').innerHTML = MODULE_DEFS.map(function(m){
+    return '<label><input type="checkbox" data-mod="' + m.key + '"' + (MODULES[m.key] ? ' checked' : '') + '> ' + esc(m.label) + '</label>';
+  }).join('');
+}
+function selectFirstVisibleTab(){
+  for(var i = 0; i < MODULE_DEFS.length; i++){
+    var m = MODULE_DEFS[i];
+    if(m.panel && MODULES[m.key]){ selectTab(m.panel); return; }
+  }
+}
+function applyModules(){
+  MODULE_DEFS.forEach(function(m){
+    if(m.tab){ byId(m.tab).hidden = !MODULES[m.key]; }
+    if(m.card){ byId(m.card).hidden = !MODULES[m.key] || !MODULES.status; }
+    if(m.panel && !MODULES[m.key]){
+      byId(m.panel).hidden = true;
+      if(activeTab === m.panel) selectFirstVisibleTab();
+    }
+  });
+  if(!MODULES.status && activeTab === 'panel-status') selectFirstVisibleTab();
+}
+
+// ---- network monitor ----
+var SB = {};
+function sb(key, value){
+  SB[key] = value;
+  var el = byId('sb-' + key);
+  if(el) el.textContent = value;
+}
+function fmtRate(bps){
+  bps = Number(bps) || 0;
+  if(bps >= 1048576) return (bps / 1048576).toFixed(1) + ' MB/s';
+  if(bps >= 1024) return (bps / 1024).toFixed(1) + ' KB/s';
+  return Math.round(bps) + ' B/s';
+}
+function netStat(label, value, sub){
+  return '<div class="netstat"><span>' + esc(label) + '</span><b>' + esc(value) + '</b><small>' + esc(sub) + '</small></div>';
+}
+function renderNet(net){
+  if(!net || net.supported === false){
+    byId('netstate').textContent = net && net.error ? '· ' + net.error : '· tidak tersedia di host ini';
+    byId('netsum').innerHTML = netStat('Turun', '-', '') + netStat('Naik', '-', '');
+    byId('netif').innerHTML = '';
+    byId('netproc').innerHTML = '';
+    sb('net', '-');
+    return;
+  }
+  byId('netstate').textContent = '· ' + (net.tcp_connections || 0) + ' koneksi TCP';
+  byId('netsum').innerHTML =
+    netStat('Turun', fmtRate(net.total_in_bps), 'semua antarmuka') +
+    netStat('Naik', fmtRate(net.total_out_bps), 'semua antarmuka') +
+    netStat('TCP', String(net.tcp_connections || 0), (net.tcp_established || 0) + ' established') +
+    netStat('Antarmuka', String((net.interfaces || []).length), 'terdeteksi');
+  var rows = (net.interfaces || []).filter(function(i){
+    return (Number(i.in_bytes) || 0) > 0 || (Number(i.out_bytes) || 0) > 0;
+  }).slice(0, 6);
+  if(rows.length){
+    byId('netif').innerHTML = '<table><tr><th>Antarmuka</th><th class="num">Turun</th><th class="num">Naik</th><th>Status</th></tr>'
+      + rows.map(function(i){
+        return '<tr><td>' + esc(i.name || i.description)
+          + (i.description && i.description !== i.name ? '<div class="dim" style="font-size:11px">' + esc(i.description) + '</div>' : '')
+          + '</td><td class="num">' + fmtRate(i.in_bps) + '</td><td class="num">' + fmtRate(i.out_bps) + '</td>'
+          + '<td>' + tag(i.up ? 'aktif' : 'nonaktif', i.up ? 'ok' : '') + '</td></tr>';
+      }).join('') + '</table>';
+  } else {
+    byId('netif').innerHTML = '<p class="note">Belum ada lalu lintas antarmuka.</p>';
+  }
+  var p = net.process;
+  if(p && p.found){
+    byId('netproc').innerHTML = '<h3>Proses ZCode <span class="dim" style="text-transform:none;letter-spacing:0">· '
+      + esc(p.name || '') + ' (' + (p.pids || []).length + ' proses)</span></h3><div class="netgrid">'
+      + netStat('Baca', fmtRate(p.read_bps), fmtBytes(p.read_bytes) + ' total')
+      + netStat('Tulis', fmtRate(p.write_bps), fmtBytes(p.write_bytes) + ' total')
+      + netStat('CPU', (Number(p.cpu_percent) || 0).toFixed(1) + '%', 'satu inti')
+      + netStat('Kalibrasi', 'x' + (Number(p.calibration) || 1), 'ZCODE_PROCESS_CALIBRATION')
+      + '</div>';
+  } else {
+    byId('netproc').innerHTML = '<p class="note">Proses ZCode tidak berjalan; baris proses disembunyikan.</p>';
+  }
+  sb('net', fmtRate(net.total_in_bps) + ' turun / ' + fmtRate(net.total_out_bps) + ' naik');
+}
+
 // ---- tabs ----
 var activeTab = 'panel-status';
 var inspectorTimer = null;
@@ -922,20 +1256,41 @@ function tick(){
   byId('stamp').textContent = 'memuat...';
   Promise.allSettled([
     fetch('/health',{cache:'no-store'}).then(function(r){return r.json();}),
-    fetch('/quota',{cache:'no-store'}).then(function(r){return r.json();})
+    fetch('/quota',{cache:'no-store'}).then(function(r){return r.json();}),
+    fetch('/v1/net',{cache:'no-store'}).then(function(r){return r.json();})
   ]).then(function(out){
     renderHealth(out[0].status==='fulfilled'?out[0].value:null);
     renderQuota(out[1]);
+    renderNet(out[2].status==='fulfilled'?out[2].value:null);
     byId('stamp').textContent = 'diperbarui '+now();
+    sb('state', 'diperbarui ' + now());
   });
 }
 
+function tickNet(){
+  fetch('/v1/net',{cache:'no-store'}).then(function(r){
+    if(r.status === 401){ showTokenAsk(); return null; }
+    return r.json();
+  }).then(function(net){ if(net) renderNet(net); }).catch(function(){});
+}
+
 var timer = setInterval(tick, 15000);
+var netTimer = setInterval(tickNet, 3000);
 byId('auto').addEventListener('change', function(e){
-  if(e.target.checked){ timer = setInterval(tick, 15000); tick(); }
-  else { clearInterval(timer); }
+  if(e.target.checked){ timer = setInterval(tick, 15000); netTimer = setInterval(tickNet, 3000); tick(); tickNet(); }
+  else { clearInterval(timer); clearInterval(netTimer); }
 });
 byId('refresh').addEventListener('click', tick);
+renderModules();
+byId('modgrid').addEventListener('change', function(e){
+  var key = e.target.getAttribute('data-mod');
+  if(!key) return;
+  MODULES[key] = e.target.checked;
+  localStorage.setItem('zcode.modules', JSON.stringify(MODULES));
+  applyModules();
+});
+applyModules();
+tickNet();
 tick();
 })();
 </script>

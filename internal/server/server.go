@@ -196,6 +196,7 @@ func handleMessages(w http.ResponseWriter, r *http.Request, body map[string]any,
 }
 
 func handleMessagesInner(w http.ResponseWriter, r *http.Request, body map[string]any, accountID string) {
+	autoMCP := shouldAutoMCP(body)
 	stream, _ := body["stream"].(bool)
 	payload := body
 	payload["model"] = models.NormalizeModel(stringOf(body["model"]))
@@ -204,6 +205,20 @@ func handleMessagesInner(w http.ResponseWriter, r *http.Request, body map[string
 	rec.NoteStream(stream)
 	meter := usage.Start(stringOf(payload["model"]), "", stream)
 	defer meter.Finish()
+	if mcpStreamingConflict(payload) {
+		anthropicError(w, 400, "automatic MCP tools require stream=false; client-owned tools may still stream", "invalid_request_error")
+		return
+	}
+	if autoMCP && !stream {
+		turn, err := runMCPToolLoop(r.Context(), payload, accountID, SessionKeyFor(r, body), rec, meter)
+		if err != nil {
+			rec.NoteError(upstreamCode(err))
+			relayUpstreamError(w, err, "anthropic")
+			return
+		}
+		sendJSON(w, 200, turn.Response)
+		return
+	}
 	upstream, err := transport.SendAnthropic(transport.SendOpts{
 		Body:            payload,
 		AccountID:       accountID,
@@ -242,6 +257,7 @@ func handleChatCompletions(w http.ResponseWriter, r *http.Request, body map[stri
 }
 
 func handleChatCompletionsInner(w http.ResponseWriter, r *http.Request, body map[string]any, accountID string) {
+	autoMCP := shouldAutoMCP(body)
 	stream, _ := body["stream"].(bool)
 	body["model"] = models.NormalizeModel(stringOf(body["model"]))
 	translated := models.OpenAIToAnthropic(body)
@@ -251,6 +267,20 @@ func handleChatCompletionsInner(w http.ResponseWriter, r *http.Request, body map
 	rec.NoteStream(stream)
 	meter := usage.Start(model, "", stream)
 	defer meter.Finish()
+	if mcpStreamingConflict(translated) {
+		openAIError(w, 400, "automatic MCP tools require stream=false; client-owned tools may still stream", nil)
+		return
+	}
+	if autoMCP && !stream {
+		turn, err := runMCPToolLoop(r.Context(), translated, accountID, SessionKeyFor(r, body), rec, meter)
+		if err != nil {
+			rec.NoteError(upstreamCode(err))
+			relayUpstreamError(w, err, "openai")
+			return
+		}
+		sendJSON(w, 200, models.AnthropicToOpenAI(turn.Response, model))
+		return
+	}
 	upstream, err := transport.SendAnthropic(transport.SendOpts{
 		Body:            translated,
 		AccountID:       accountID,

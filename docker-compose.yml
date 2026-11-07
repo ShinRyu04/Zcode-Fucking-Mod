@@ -1,0 +1,18 @@
+services:
+  zcode-bridge:
+    build: .
+    image: zcode-bridge-mod:latest
+    container_name: zcode-bridge
+    restart: unless-stopped
+    ports:
+      - "20131:20131"
+    environment:
+      # Optional: require a token on every route (recommended when published).
+      ZCODE_BRIDGE_TOKEN: ${ZCODE_BRIDGE_TOKEN:-}
+      # Idle (off-peak) lane, optional.
+      ZCODE_ASYNC_ENABLED: ${ZCODE_ASYNC_ENABLED:-0}
+      # Manual plan claim scheduler, optional.
+      ZCODE_CLAIM_ENABLED: ${ZCODE_CLAIM_ENABLED:-1}
+      ZCODE_CLAIM_AUTO: ${ZCODE_CLAIM_AUTO:-1}
+    volumes:
+      - ./data:/data

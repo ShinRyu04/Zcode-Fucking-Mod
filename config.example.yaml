@@ -1,0 +1,44 @@
+# zcode-bridge-mod config.yaml (optional; environment variables always win).
+# Only the scalar keys below are read. Anything else is ignored safely.
+
+server:
+  host: "127.0.0.1"   # use 0.0.0.0 inside Docker
+  port: 20131
+
+auth:
+  # Token clients must present as Authorization: Bearer <value>.
+  # Empty = open on loopback only.
+  proxyApiKey: ""
+
+# Display name used by /v1/models when a client omits `model`.
+defaultModel: glm-5.3-flash
+
+# Off-peak "idle plan" ticket queue. Exposes POST /async/v1/messages and
+# /async/v1/chat/completions; requires a logged-in plan JWT.
+async:
+  enabled: false
+  origin: "https://zcode.z.ai"
+  pollIntervalMs: 5000
+  keepAliveIntervalMs: 3000
+  maxWaitMs: 0          # 0 = wait forever
+  maxRetries: 3
+  controlTimeoutMs: 15000
+
+# Manual weekend/trial plan claiming (billing preview + marketing banner).
+# `zcode-bridge claim list|now` works regardless of these switches.
+claim:
+  enabled: true
+  auto: true
+  origin: "https://zcode.z.ai"
+  pollIntervalMs: 300000
+  cooldownMs: 600000
+  planId: ""            # empty = highest priority live campaign
+
+# Traffic inspector (GET /inspect, dashboard Inspector tab).
+capture:
+  enabled: false
+  capacity: 200         # ring size; exchanges persist to data/capture.jsonl
+
+# Startup GitHub release notice (never applies updates in place).
+updateCheck:
+  enabled: true

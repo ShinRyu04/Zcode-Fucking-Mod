@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="id" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>zcode-bridge</title>
+<link rel="stylesheet" href="/assets/app.css">
+<script defer src="/assets/app.js"></script>
+<script defer src="/assets/chat.js"></script>
+</head>
+<body>
+<a class="skip" href="#view">Lewati ke konten</a>
+<header class="topbar">
+  <button class="iconbtn only-mobile" id="navtoggle" type="button" aria-label="Buka menu">
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 4.5h14M2 9h14M2 13.5h14"/></svg>
+  </button>
+  <a class="brand" href="#/overview">
+    <span class="brand-dot" id="livedot" title="Status stream langsung"></span>
+    <span>zcode-bridge</span>
+  </a>
+  <span class="brand-sub" id="brandsub">lane lokal</span>
+  <span class="spacer"></span>
+  <span class="chip" id="toplane">memuat lane</span>
+  <button class="iconbtn" id="themebtn" type="button" title="Ganti tema" aria-label="Ganti tema">
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="9" cy="9" r="6.5"/><path d="M9 2.5v13"/><path d="M9 2.5a6.5 6.5 0 0 0 0 13z" fill="currentColor" stroke="none"/></svg>
+  </button>
+  <button class="iconbtn" id="tokenbtn" type="button" title="Token bridge" aria-label="Atur token bridge">
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="6" cy="6" r="3.2"/><path d="M8.4 8.4 15 15M12 12l2-2M14 14l1.5-1.5"/></svg>
+  </button>
+</header>
+
+<div class="shell">
+  <aside class="sidebar" id="sidebar">
+    <nav id="nav" aria-label="Navigasi utama">
+      <a href="#/overview" data-page="overview">Ringkasan</a>
+      <a href="#/chat" data-page="chat">Chat</a>
+      <a href="#/inspector" data-page="inspector">Inspector</a>
+      <a href="#/usage" data-page="usage">Penggunaan</a>
+      <a href="#/network" data-page="network">Jaringan</a>
+      <a href="#/claim" data-page="claim">Klaim plan</a>
+      <a href="#/settings" data-page="settings">Pengaturan</a>
+    </nav>
+    <div class="side-foot">
+      <div class="side-stat"><span>Kecepatan</span><b id="sidetps">-</b></div>
+      <div class="side-stat"><span>Hari ini</span><b id="sidereq">-</b></div>
+      <div class="side-stat"><span>Jaringan</span><b id="sidenet">-</b></div>
+      <a class="side-link" href="/overlay" target="_blank" rel="noopener">Buka overlay</a>
+    </div>
+  </aside>
+
+  <main id="view" tabindex="-1"></main>
+</div>
+
+<div class="toast-wrap" id="toasts" aria-live="polite"></div>
+
+<dialog id="tokendlg" aria-labelledby="tokentitle">
+  <form method="dialog" id="tokenform">
+    <h3 id="tokentitle">Token bridge</h3>
+    <p class="muted">Diperlukan saat <code>ZCODE_BRIDGE_TOKEN</code> di-set. Disimpan di sesi tab ini.</p>
+    <label class="field"><span>Bearer token</span><input type="password" id="tokeninput" autocomplete="off" spellcheck="false"></label>
+    <div class="row end">
+      <button type="button" class="btn ghost" id="tokencancel">Batal</button>
+      <button type="submit" class="btn">Simpan token</button>
+    </div>
+  </form>
+</dialog>
+</body>
+</html>

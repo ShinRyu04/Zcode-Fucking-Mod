@@ -31,13 +31,53 @@ This fork adds, on top of upstream:
   already relays, redacts secrets, and shows them in the dashboard's
   **Inspector** tab (`ZCODE_CAPTURE=1` to enable).
 - Real throughput metering — tokens come from upstream usage blocks, not byte
-  estimates; today/all-time aggregates, per-model rows, speed gauges and two
-  charts (15-minute rolling + per-request) live in the dashboard's
+  estimates; today/all-time aggregates, per-model rows, three speed rings
+  (last / highest / 7-day average), four chart ranges (1 h / 6 h / 24 h / 7 d),
+  a per-model trend chart and a per-request chart live in the dashboard's
   **Penggunaan** tab, backed by `GET /v1/usage` and
   `data/usage-YYYYMMDD.jsonl`.
+- A **network monitor** card fed by Windows iphlpapi — per-adapter rates,
+  loopback TCP attribution for the bridge port, and the ZCode client's own
+  IO/CPU counters (gated off when the app is not running) — plus a sticky
+  status bar and per-module visibility settings that persist in the browser.
 - A compact **overlay** readout (`GET /overlay`) for a small always-on-top
-  window, and a **Playground** tab that sends real prompts through the same
-  lane so a model can be tested without leaving the dashboard.
+  window — card, mini gauge, pet or capsule, remembered per browser — and a
+  **Playground** tab that sends real prompts through the same lane so a model
+  can be tested without leaving the dashboard.
+- A console rewrite at `/dashboard`: an instrument-style SPA (hash router,
+  dark/light theme, embedded assets, no CDN) covering overview, inspector,
+  usage, network, claim and settings, fed live by `GET /v1/events` (SSE over
+  `fetch`, so the bridge token travels in a header). The legacy page stays at
+  `/classic`. `GET /v1/settings` reports the effective, restart-required
+  configuration without secrets.
+- A **chat workspace** at `/chat`: multiple conversations in `localStorage`,
+  model picker from `/v1/models`, streaming `/v1/chat/completions` with stop
+  and regenerate, temperature/max-token controls, import/export and escaped
+  Markdown rendering.
+- A **native pet window** in the companion: a click-through, always-on-top
+  layered window drawn per pixel (no browser, no asset files) whose mood
+  follows `/v1/usage` (offline / sleep / idle / thinking / happy / turbo), with
+  remembered position and tray toggles for visibility and click-through.
+- A **terminal panel** (`zcode-bridge tui`): live usage/rings and network
+  panes on a raw ANSI console, keys `1`/`2` switch pane, `r` refreshes, `q`
+  quits; no TUI library.
+- **Account/plan switching** in the dashboard Status tab (`GET /v1/accounts`,
+  `POST /v1/accounts/switch`) and a **manual plan claim** card
+  (`GET`/`POST /v1/claim`, `zcode-bridge claim list|now`) that polls the
+  weekend/trial campaigns and claims the highest-priority one.
+- An **idle (off-peak) channel** behind `ZCODE_ASYNC_ENABLED=1`:
+  `POST /async/v1/messages` and `/async/v1/chat/completions` take an
+  off-peak queue ticket, emit SSE keepalives while waiting, and forward the
+  model stream once the ticket turns ready (`GET /async/v1/health` probes the
+  queue).
+- **Inspector persistence, HAR export and replay**: exchanges append to
+  `data/capture.jsonl` and reload after a restart; `GET /inspect?format=har`
+  exports a HAR 1.2 session; `POST /inspect/replay?id=N` re-sends one captured
+  request in-process.
+- **config.yaml + Docker**: the optional `config.yaml` maps onto environment
+  variables (env always wins), `Dockerfile`/`docker-compose.yml` run the
+  bridge non-root on Linux, and a startup release check (`zcode-bridge
+  update-check`) prints the latest GitHub tag without ever updating in place.
 
 ## Install
 
@@ -62,6 +102,58 @@ On Windows, `start-bridge.cmd` / `start-bridge-hidden.vbs` do the same headless
 stored in `data/accounts.json` (mode `0600`). Repeat `login --label work`
 per account; use `login --list`, `login --set-default <id>`,
 `login --remove <id>` to manage the ring.
+
+## Desktop companion (Windows)
+
+`go build -o zcode-companion.exe ./cmd/zcode-companion` builds an optional tray
+shell (stdlib + Win32 only, no assets). `companion.cmd` starts it with the same
+loopback `PORT`/`HOST` as `start-bridge.cmd`. The tray menu opens the dashboard
+or capsule overlay, toggles login autostart (per-user `Run` key), checks the
+latest GitHub release, restarts the bridge and quits (stopping a bridge it
+started). It spawns `zcode-bridge.exe` from its own directory whenever
+`/health` stops answering and restarts it after a crash; a bridge started
+externally (e.g. Task Scheduler) is left alone until it disappears.
+
+### Pet window
+
+The tray also owns the native pet: a 190x190 layered window drawn per pixel
+(no browser, no PNG assets) that floats above the ZCode desktop app and never
+takes focus.
+
+1. Build both binaries: `go build -o zcode-bridge.exe ./cmd/zcode-bridge`
+   and `go build -o zcode-companion.exe ./cmd/zcode-companion`.
+2. Start it with `companion.cmd` (sets `PORT=20135`, same as
+   `start-bridge.cmd`) or run `zcode-companion.exe` from the repo directory.
+   The pet appears near the bottom-right corner of the work area.
+3. Open the tray icon: `Pet: tampilkan` hides/shows it, `Pet: klik-tembus`
+   toggles whether clicks pass through to the app underneath. With
+   click-through off, drag the pet to move it; the position is remembered in
+   `%APPDATA%\zcode-companion\pet.json`. `Keluar` quits the companion and
+   removes the pet.
+
+Mood follows the last `/v1/usage` sample, polled every two seconds:
+
+| state | trigger | look |
+|---|---|---|
+| turbo | request in the last 20 s, >= 80 t/s | emerald, bouncing, smile |
+| happy | request in the last 20 s with t/s | emerald, gentle bob, smile |
+| thinking | request in the last 20 s, no t/s yet | amber, eyes up, dots |
+| idle | last request < 150 s ago | emerald, calm, blinking |
+| sleep | no request for 150 s | grey, eyes closed |
+| offline | `/v1/usage` unreachable twice in a row | grey, red badge |
+
+When `ZCODE_BRIDGE_TOKEN` is set, the companion sends it as a Bearer token to
+`/v1/usage`. The window is DPI-aware, so its position stays correct on scaled
+(125%/150%) displays.
+
+Headless controls, useful for scripts and verification:
+
+```sh
+zcode-companion.exe -diagnose          # paths, URL, health, autostart state
+zcode-companion.exe -autostart=on      # add the Run entry (off removes it)
+zcode-companion.exe -no-tray           # supervise without a tray icon
+zcode-companion.exe -check-update      # query the latest GitHub release
+```
 
 ## Connect anything
 
@@ -100,15 +192,30 @@ curl -s http://127.0.0.1:20131/v1/chat/completions \
 | `POST /v1/messages` | Anthropic | pass-through into the plan lane |
 | `POST /v1/chat/completions` | OpenAI | translated both ways, incl. streaming + tools |
 | `POST /v1/responses` | OpenAI Responses | Codex CLI (`wire_api = "responses"`): input/instructions/tools mapped onto the Anthropic layer, full Responses SSE lifecycle |
+| `POST /async/v1/messages` | Anthropic | idle/off-peak lane: queue ticket + SSE keepalives, then the normal Anthropic stream (`ZCODE_ASYNC_ENABLED=1`) |
+| `POST /async/v1/chat/completions` | OpenAI | same ticket flow, OpenAI stream translation |
+| `GET /async/v1/health` | — | queue availability probe (`can_take_number`, `next_take_at`) |
+| `GET /v1/accounts` | — | non-secret account ring for the dashboard switcher |
+| `POST /v1/accounts/switch` | — | body `{"id":"<account>"}` pins the rotation head (plan switch) |
+| `GET /v1/claim` | — | claimable weekend/trial campaigns (billing preview + marketing banner) |
+| `POST /v1/claim` | — | body `{"plan_id":"…"}` or empty for highest priority |
 | `GET /v1/models` | — | live entitlements merged across plans (static fallback when billing is down) |
 | `GET /v1/quota` | — | per-entitlement grant rows (balance-first) |
-| `GET /dashboard` | — | built-in status page: lane, credentials, quota, plus **Inspector**, **Penggunaan** and **Playground** tabs (no token needed) |
+| `GET /dashboard` | — | console SPA: overview, inspector, usage, network, claim, settings (embedded assets, no CDN) |
+| `GET /chat` | — | chat workspace: local conversations, streaming, stop/regenerate, import/export |
+| `GET /classic` | — | legacy single-file dashboard (previous tabbed page) |
+| `GET /v1/events` | — | SSE snapshot every second: `usage`, `net`, throttled `health` (token-gated when set) |
+| `GET /v1/settings` | — | effective lane/host/port/capture/claim/env summary, secrets reduced to presence |
+| `GET /v1/claim/history` | — | claim attempts made by this process, newest first (max 50) |
 | `GET /overlay` | — | compact t/s readout page (current, today's average, tokens, sparkline) refreshed every second |
 | `GET /inspect?limit=N` | — | captured exchanges, newest first (summaries only) |
 | `GET /inspect?id=N` | — | one captured exchange with headers and bodies |
 | `GET /inspect?limit=N&full=1` | — | JSON export with bodies (≤50 entries) |
-| `DELETE /inspect` | — | drop every captured exchange |
-| `GET /v1/usage` | — | token + throughput aggregates: `today`, `all_time`, `recent`, plus a separate `desktop` block read from the ZCode CLI database (needs `ZCODE_BRIDGE_TOKEN` when set) |
+| `GET /inspect?format=har&limit=N` | — | HAR 1.2 export of the newest exchanges |
+| `POST /inspect/replay?id=N` | — | re-issues one captured request through the local handler chain (new capture entry) |
+| `DELETE /inspect` | — | drop every captured exchange (and truncate the persistence file) |
+| `GET /v1/usage` | — | token + throughput aggregates: `today`, `all_time`, `rings` (last/high/7-day), `recent`, plus a separate `desktop` block read from the ZCode CLI database (needs `ZCODE_BRIDGE_TOKEN` when set) |
+| `GET /v1/net` | — | network sample: per-interface rates/counters, `tcp_connections` for the bridge port, and the matched ZCode process block (`supported=false` off Windows; needs `ZCODE_BRIDGE_TOKEN` when set) |
 | `POST /mcp` | MCP | JSON-RPC 2.0 endpoint: `initialize`, `tools/list`, `tools/call` over every configured upstream server |
 | `GET /mcp` | — | MCP catalog page (servers, flattened tools, ready-to-paste client config); `?format=json` for the object |
 | `GET /health` | — | lane, credential ring, device-mid state |
@@ -148,6 +255,19 @@ indexing, terminated with `[DONE]`).
 | `ZCODE_DB` | `~/.zcode/cli/db/db.sqlite` | ZCode CLI usage database read (never written) for the desktop half of the Penggunaan tab |
 | `ZCODE_DESKTOP` | *(on)* | `0` = stop reading the desktop database entirely |
 | `ZCODE_MCP_SERVERS` | *(unset = no upstreams)* | path to (or inline) JSON listing MCP servers; accepts both `{"servers":[…]}` and `{"mcpServers":{…}}` |
+| `ZCODE_MCP` | *(off)* | `1` = inject configured MCP tools into non-streaming model calls and run `tool_use → tools/call → tool_result` until the model answers |
+| `ZCODE_MCP_MAX_ROUNDS` | `8` | automatic MCP round limit (1–32); client-supplied tools are never executed by the bridge |
+| `ZCODE_PROCESS_CALIBRATION` | `1` | display scale (0–1000) applied to the ZCode client's IO rates in `/v1/net`; the counters include file/pipe traffic, so this lets the card be matched against interface rates |
+| `ZCODE_CONFIG` | `./config.yaml` when present | optional YAML subset loaded at startup; every key maps onto the env var it names (env wins) |
+| `ZCODE_CAPTURE_FILE` / `ZCODE_CAPTURE_DIR` | `data/capture.jsonl` / `data` | inspector persistence target; the ring reloads the newest lines when capture is enabled |
+| `ZCODE_ASYNC_ENABLED` | *(off)* | `1` = expose the idle/off-peak `/async/v1/*` routes |
+| `ZCODE_ASYNC_ORIGIN` | `https://zcode.z.ai` | off-peak control/inference origin |
+| `ZCODE_ASYNC_POLL_MS` / `ZCODE_ASYNC_KEEPALIVE_MS` | `5000` / `3000` | ticket poll and SSE keepalive cadence |
+| `ZCODE_ASYNC_MAX_WAIT_MS` / `ZCODE_ASYNC_MAX_RETRIES` | `0` (forever) / `3` | queue wait cap and expired-ticket retakes |
+| `ZCODE_CLAIM_ENABLED` / `ZCODE_CLAIM_AUTO` | `1` / `1` | manual plan claim scheduler (inert without a plan JWT) |
+| `ZCODE_CLAIM_ORIGIN` / `ZCODE_CLAIM_POLL_INTERVAL_MS` / `ZCODE_CLAIM_COOLDOWN_MS` | `https://zcode.z.ai` / `300000` / `600000` | claim control plane, poll and backoff |
+| `ZCODE_CLAIM_PLAN_ID` | *(unset)* | pin one campaign instead of the highest priority |
+| `ZCODE_UPDATE_CHECK` | *(on)* | `off` disables the startup GitHub release notice |
 
 ## Lane rules (verified against production)
 
@@ -182,9 +302,19 @@ expiring within 2 hours.
 | Path | Purpose |
 |---|---|
 | `cmd/zcode-bridge` | entry point: serve + login subcommand |
-| `internal/server` | HTTP routes incl. `/v1/responses`, SSE translation, session affinity, dashboard (status/inspector/usage) |
-| `internal/capture` | bounded request/response ring for the inspector (opt-in, secrets redacted) |
-| `internal/usage` | per-request token/throughput meter, JSONL persistence, today/all-time aggregates |
+| `cmd/zcode-companion` | optional Windows tray shell: bridge supervisor, login autostart, release update check |
+| `internal/server` | HTTP routes incl. `/v1/responses`, SSE translation, session affinity, dashboard (status/inspector/usage), overlay modes |
+| `internal/capture` | bounded request/response ring for the inspector (opt-in, secrets redacted, JSONL persistence) |
+| `internal/offpeak` | idle-channel ticket client (availability/take/status/settle, retakes) |
+| `internal/claim` | weekend/trial plan discovery + claim scheduler |
+| `internal/config` | optional `config.yaml` subset mapped onto environment variables |
+| `internal/update` | GitHub release check + dotted version compare |
+| `internal/tui` | ANSI terminal panel (usage/network panes, raw console input) |
+| `internal/usage` | per-request token/throughput meter, JSONL persistence, today/all-time aggregates, rings |
+| `internal/desktop` | read-only ZCode CLI database aggregation for the panel side |
+| `internal/netmon` | interface/TCP/process counters via iphlpapi (Windows) with a neutral stub elsewhere |
+| `internal/sqlite` | pure-Go read-only SQLite reader (btree + WAL) |
+| `internal/mcp` | dependency-free MCP client (stdio + streamable HTTP) |
 | `internal/transport` | plan-lane client: shaping, rotation, retries |
 | `internal/models` | OpenAI ↔ Anthropic translation |
 | `internal/quota` | billing readout + per-model merge |
@@ -192,6 +322,63 @@ expiring within 2 hours.
 | `internal/auth` | device flow, token refresh, credential resolve chain |
 | `internal/identity` | identity/telemetry headers, device mid, app version |
 | `internal/systemprompt` | embedded identity asset + 3-block shaping |
+
+## Terminal panel
+
+```sh
+zcode-bridge tui        # same HOST/PORT/token as serve; q quits
+```
+
+Two panes read the local API every second: **Penggunaan** (rings, today,
+per-model table, recent requests) and **Jaringan** (adapter rates, bridge TCP
+count, ZCode process IO/CPU when the app runs). Implementation is raw ANSI +
+`kernel32` console mode on Windows / line input elsewhere — no TUI library.
+
+## Idle channel (off-peak)
+
+Off-peak calls run on free-capacity tickets instead of grant seconds. Enable
+with `ZCODE_ASYNC_ENABLED=1` (the account needs coding-plan entitlement;
+without it the queue answers `coding plan is required`). Clients call
+`POST /async/v1/messages` or `/async/v1/chat/completions` with the usual
+dialect body and `"stream": true`: the bridge takes a ticket, emits SSE
+`keepalive` comments while the ticket is queued, then forwards the model
+stream through the idle lane. Non-streaming requests wait silently and return
+a normal JSON body. `GET /async/v1/health` reports whether a ticket can be
+taken now.
+
+## Plan claim
+
+Weekend/trial campaigns are claimed from the billing preview plus the
+marketing banner face:
+
+```sh
+zcode-bridge claim list     # plan id, priority, window
+zcode-bridge claim now      # claim the highest-priority live campaign
+```
+
+The scheduler (`ZCODE_CLAIM_ENABLED=1`, `ZCODE_CLAIM_AUTO=1`) runs every five
+minutes and backs off ten minutes after a failure. Captcha-gated campaigns
+cannot be solved headlessly — the error names that case, and the ZCode
+desktop app remains the fallback. The dashboard's Status tab has the same
+list with a Klaim button, and the account ring is switchable there
+("Akun aktif"), which changes which plan credential the next inference call
+uses.
+
+## Configuration and Docker
+
+Copy `config.example.yaml` to `config.yaml` (or point `ZCODE_CONFIG` at it);
+only the documented scalar keys are read, and any environment variable that
+is already set wins over the file. For containers:
+
+```sh
+docker compose up -d --build
+```
+
+The image builds a static binary, runs as an unprivileged user, listens on
+`0.0.0.0:20131`, and keeps `data/` (accounts, usage, capture) on a volume.
+Set `ZCODE_BRIDGE_TOKEN` before publishing the port. `zcode-bridge
+update-check` (or the companion's `-check-update`) prints the latest GitHub
+release; nothing is ever replaced in place.
 
 ## Testing
 
@@ -286,15 +473,15 @@ Changes made in this fork, relative to upstream `azrinaldi/zcode-bridge`:
    diluted by requests that never had a first token. Rows append to
    `data/usage-YYYYMMDD.jsonl`; on boot the newest 10k rows are re-read so
    today's totals and the chart survive a restart. Exposed as `GET /v1/usage`
-   and the dashboard's **Penggunaan** tab: today vs all-time totals, a focal
-   average t/s number, per-model table, and a 60-request chart with speed tiers
-   (`<40`, `40-80`, `80-160`, `160-240`, `240-320`, `320+` tok/s) drawn as
-   inline SVG — no charts library, still stdlib only. The panel's gauges are
-   reproduced natively (last request, today's average, cache-hit rate) along
-   with a 15-minute rolling chart at 10-second resolution and a per-request
-   tier chart; `GET /overlay` is the floating-widget equivalent — run
-   `overlay.cmd` and it opens the page in an Edge app window pinned on top
-   (`overlay.ps1` does the pinning). Files: `internal/usage`,
+   and the dashboard's **Penggunaan** tab: today vs all-time totals, three
+   rings (last request, highest ever, 7-day token-weighted average), a
+   per-model table, and four selectable chart ranges (1 h / 6 h / 24 h / 7 d)
+   plus a per-model trend drawn as inline SVG — no charts library, still
+   stdlib only. Throughput tiers use the panel's colors
+   (`<40`, `40-80`, `80-160`, `160-240`, `240-320`, `320+` tok/s). The cache
+   hit rate moved into today's meta row; `GET /overlay` is the floating-widget
+   equivalent — run `overlay.cmd` and it opens the page in an Edge app window
+   pinned on top (`overlay.ps1` does the pinning). Files: `internal/usage`,
    `internal/server/usage.go`, `internal/server/overlay.go`,
    `internal/server/dashboard.go`.
 7. **Dashboard playground**: a **Playground** tab posts a prompt to
@@ -330,6 +517,58 @@ Changes made in this fork, relative to upstream `azrinaldi/zcode-bridge`:
    the first and flagging the server. `GET /mcp` doubles as the setup page —
    it prints the exact `mcpServers` block for Claude/Codex-style clients.
 
+10. **Network monitor without dependencies**: `internal/netmon` samples
+   interface counters through `iphlpapi`'s `GetIfTable` and maps rows to real
+   adapters with `GetAdaptersAddresses`, so filter-layer duplicates and device
+   paths never reach the card (friendly names like `Wi-Fi` do). TCP attribution
+   uses `GetExtendedTcpTable` filtered by the bridge port, and the ZCode client
+   process tree is matched by executable name with `GetProcessIoCounters` and
+   `GetProcessTimes` for read/write/CPU deltas; when the app is not running the
+   process block is omitted entirely. Rates are one-second deltas, guarded
+   against counter wrap; `/v1/net` is the JSON face, the dashboard's Status tab
+   shows the card with a 3-second refresh, and a sticky status bar summarizes
+   lane, account, request count, speed and network. Module visibility
+   (Status/Inspector/Penggunaan/Playground/network card) is a persisted
+   browser-side setting. Files: `internal/netmon`, `internal/server/routes.go`,
+   `internal/server/dashboard.go`.
+
+11. **Idle/off-peak channel and plan claim** (behavior ported from
+    [TriDefender/zcode-api](https://github.com/TriDefender/zcode-api), source
+    not copied): `internal/offpeak` implements the ticket protocol
+    (availability, take, batched status, settle) with retakes, a wait cap and
+    SSE keepalives; `POST /async/v1/messages` and `/async/v1/chat/completions`
+    bind a ready ticket to the request context, so the existing shaping,
+    translation, capture and metering paths stay untouched while
+    `internal/transport` switches to the off-peak origin and ticket headers.
+    `internal/claim` discovers campaigns from the billing preview and the
+    marketing banner face, then claims the highest-priority one; a five-minute
+    scheduler plus `zcode-bridge claim list|now` and `/v1/claim` expose it.
+    Account/plan switching (`/v1/accounts`, `/v1/accounts/switch`) is the
+    dashboard counterpart of the reference's provider/plan selector. Files:
+    `internal/offpeak`, `internal/claim`, `internal/transport/offpeak.go`,
+    `internal/server/async.go`, `internal/server/claim_api.go`,
+    `internal/server/accounts_api.go`.
+
+12. **Inspector persistence, HAR export and replay** (remaining
+    [ZProxy](https://github.com/TheHolyOneZ/ZProxy) ideas): the redacted ring
+    appends to `data/capture.jsonl` (newest 10k reloaded, file compacted past
+    8MB), `GET /inspect?format=har` emits HAR 1.2, and
+    `POST /inspect/replay?id=N` re-sends a captured request through the local
+    handler chain in-process (no proxy hop), refusing truncated bodies so the
+    prompt cannot change. Files: `internal/capture/store.go`,
+    `internal/server/inspect.go`, `internal/server/dashboard.go`.
+
+13. **Terminal panel**: `zcode-bridge tui` renders usage rings, per-model
+    rows and network counters in two ANSI panes (Windows raw console through
+    `kernel32`, line input elsewhere) with `1`/`2`/`r`/`q`. Files:
+    `internal/tui`, `cmd/zcode-bridge/main.go`.
+
+14. **Deployment conveniences**: optional `config.yaml` (flat YAML subset
+    mapped onto env vars, env wins), a non-root Dockerfile,
+    `docker-compose.yml`, `config.example.yaml`, and GitHub release checks
+    (`internal/update`, `zcode-bridge update-check`, startup notice). Files:
+    `internal/config`, `internal/update`.
+
 ## Credits
 
 This fork is a combination of ideas from several public projects — the bridge
@@ -339,11 +578,13 @@ the features above were ported (not vendored) from:
 | Project | What was taken |
 |---|---|
 | [TheHolyOneZ/ZProxy](https://github.com/TheHolyOneZ/ZProxy) | request/response inspector idea — re-done without MITM |
-| [TriDefender/zcode-api](https://github.com/TriDefender/zcode-api) | `POST /v1/responses` wire format for Codex CLI |
-| [Masterchiefm/zcode-speed-panel](https://github.com/Masterchiefm/zcode-speed-panel) | speed-panel presentation (gauges, tiers, rolling chart, floating readout) — measurement replaced by real usage-block math |
+| [TriDefender/zcode-api](https://github.com/TriDefender/zcode-api) | `POST /v1/responses` wire format for Codex CLI; idle/off-peak ticket channel, plan claim, provider/plan switch (behaviour re-implemented in Go) |
+| [Masterchiefm/zcode-speed-panel](https://github.com/Masterchiefm/zcode-speed-panel) | speed-panel presentation (rings, tiers, range charts, model trend, network/process cards, floating readout) — measurement replaced by real usage-block math and iphlpapi counter deltas |
 
 No code is copied from those projects; everything is implemented in Go with the
-standard library only.
+standard library only. `TriDefender/zcode-api` is licensed CC BY-NC-SA 4.0;
+this fork uses only its observable protocol behaviour, not its source, and
+stays MIT for the original and independently written parts.
 
 ## License
 

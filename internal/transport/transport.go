@@ -533,6 +533,10 @@ func attemptOnce(ctx context.Context, client *http.Client, acct candidate, beare
 		SessionID: sessionID, RequestID: requestID, TraceID: traceID, QueryID: queryID,
 	})
 	headers["authorization"] = "Bearer " + bearer
+	if ticket := OffPeakTicket(ctx); ticket != "" {
+		headers["x-off-peak-ticket-id"] = ticket
+		headers["x-coding-plan-api-key"] = bearer
+	}
 	headers["content-type"] = "application/json"
 	if streamTrue(o.Body) {
 		headers["accept"] = "text/event-stream"
@@ -555,7 +559,7 @@ func attemptOnce(ctx context.Context, client *http.Client, acct candidate, beare
 	// NO deferred cancel: the response body keeps streaming after this
 	// function returns, and canceling here would kill it mid-flight. The
 	// returned body is wrapped so cancel runs when the consumer closes it.
-	req, err := http.NewRequestWithContext(callCtx, http.MethodPost, InferenceOrigin+PlanAnthropicPath, bytes.NewReader(raw))
+	req, err := http.NewRequestWithContext(callCtx, http.MethodPost, upstreamURLFor(ctx), bytes.NewReader(raw))
 	if err != nil {
 		cancel()
 		return nil, &UpstreamError{Msg: "build request: " + err.Error(), Status: 500, Kind: "config"}

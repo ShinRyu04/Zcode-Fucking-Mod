@@ -2,6 +2,7 @@ package capture
 
 import (
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 )
@@ -39,6 +40,43 @@ func TestDisabledRecorderIsNil(t *testing.T) {
 	var rec *Recorder
 	rec.NoteModel("x") // nil Recorder must be a no-op
 	rec.Finish()
+}
+
+func TestCapturePersistsAndRestores(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/capture.jsonl"
+	t.Setenv("ZCODE_CAPTURE", "1")
+	t.Setenv("ZCODE_CAPTURE_FILE", path)
+	ResetForTest()
+
+	record(t, "/v1/messages", "a1", 200, "persisted-body", []byte(`{"model":"glm-5.3-flash"}`))
+	line, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("capture file: %v", err)
+	}
+	if !strings.Contains(string(line), "persisted-body") {
+		t.Fatalf("exchange missing from file: %s", line)
+	}
+	if strings.Contains(string(line), "super-secret-bridge-token") {
+		t.Fatal("secret leaked into the persistence file")
+	}
+
+	ResetForTest()
+	st := Status()
+	if !st.Enabled || st.Count != 1 {
+		t.Fatalf("restore lost the ring: %+v", st)
+	}
+	ex, ok := Get(1)
+	if !ok || ex.Path != "/v1/messages" || ex.Account != "a1" {
+		t.Fatalf("restored exchange = %+v ok=%v", ex, ok)
+	}
+
+	if dropped := Clear(); dropped != 1 {
+		t.Fatalf("clear dropped %d", dropped)
+	}
+	if info, err := os.Stat(path); err != nil || info.Size() != 0 {
+		t.Fatalf("capture file not truncated: %v size=%d", err, info.Size())
+	}
 }
 
 func TestRingBoundsAndNewestFirst(t *testing.T) {

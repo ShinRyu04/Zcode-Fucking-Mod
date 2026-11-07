@@ -19,6 +19,20 @@ versions follow [SemVer](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Console SPA at `/dashboard` (hash router, dark/light, embedded CSS/JS, no
+  CDN): overview, inspector, usage, network, claim and read-only settings.
+  The previous tabbed page moved to `/classic`; `/chat` is the new chat
+  workspace with local conversations, streaming, stop/regenerate and
+  import/export.
+- `GET /v1/events`: SSE snapshot (usage, network, throttled health) consumed
+  with `fetch` so the bridge token can be sent as a header.
+- `GET /v1/settings`: effective configuration summary with capture/claim/env
+  state; secrets are reported as presence only. `GET /v1/claim/history`
+  returns this process's claim attempts (max 50).
+- Native layered pet in `zcode-companion`: per-pixel alpha, always-on-top,
+  click-through by default, never activates, mood follows `/v1/usage`
+  (offline/sleep/idle/thinking/happy/turbo), position persisted, tray toggles
+  for visibility and click-through.
 - `internal/sqlite`: a dependency-free, read-only SQLite reader (file header,
   WAL with checksum-validated committed prefix, table b-trees, overflow
   payloads, record decoding, column names parsed from `CREATE TABLE`). Reads
@@ -36,6 +50,11 @@ versions follow [SemVer](https://semver.org/).
 - `internal/mcp`: dependency-free MCP client — stdio children and streamable
   HTTP (JSON or SSE, `Mcp-Session-Id`), pagination, per-server failure
   reporting, deterministic namespacing.
+- Optional automatic MCP loop (`ZCODE_MCP=1`) for non-streaming Anthropic and
+  OpenAI chat calls: inject namespaced tools, execute every returned MCP
+  `tool_use`, append the matching `tool_result`, and continue inside the same
+  plan lane/session until the model answers. Client-supplied tools retain the
+  existing caller-owned round-trip; `ZCODE_MCP_MAX_ROUNDS` bounds recursion.
 - Dashboard **Penggunaan**: "Aplikasi ZCode" section with the same numbers,
   a range switch (15 mnt / 1 jam / 6 jam / 24 jam), a curve/per-model switch,
   and an explicit note that these rows come from `db.sqlite`, not from bridge
@@ -70,6 +89,53 @@ versions follow [SemVer](https://semver.org/).
   `full=1` export) and `DELETE /inspect`; dashboard "Inspector" tab with
   method/status filters, path search and a detail panel. Secrets are
   redacted before storage; the endpoints honour `ZCODE_BRIDGE_TOKEN`.
+- Dashboard speed panel parity with the speed panel: three rings (last request,
+  highest ever, 7-day token-weighted average), four selectable ranges
+  (1 h / 6 h / 24 h / 7 d) and a per-model trend chart; module visibility
+  settings persisted in `localStorage`, and a sticky status bar showing lane,
+  account, request count, speed and network.
+- `GET /v1/net` plus `internal/netmon`: Windows interface counters
+  (`GetIfTable` mapped to real adapters through `GetAdaptersAddresses`),
+  loopback TCP attribution for the bridge port, and the ZCode client's IO/CPU
+  deltas (`GetProcessIoCounters`/`GetProcessTimes`, opt-in
+  `ZCODE_PROCESS_CALIBRATION`). Non-Windows hosts report `supported: false`;
+  a missing client hides the process block. Dashboard card refreshes every
+  three seconds.
+- Overlay presentation modes: `/overlay` (card), `/overlay/gauge` (and
+  `/overlay/mini`), `/overlay/pet` and `/overlay/capsule`; the last choice is
+  remembered in `localStorage`.
+- `cmd/zcode-companion`: Windows tray shell (stdlib + Win32 only) that
+  supervises `zcode-bridge.exe` (spawn when `/health` is down, restart after a
+  crash), toggles login autostart through the per-user `Run` key, opens the
+  dashboard/overlay, and checks the latest GitHub release. Flags:
+  `-diagnose`, `-no-tray`, `-autostart=on|off`, `-check-update`;
+  `companion.cmd` launches the tray.
+- `zcode-bridge tui`: ANSI terminal panel with usage/network panes, raw console
+  input on Windows and a line-input fallback elsewhere.
+- Idle/off-peak channel (`ZCODE_ASYNC_ENABLED=1`): `/async/v1/messages` and
+  `/async/v1/chat/completions` take an upstream queue ticket
+  (`/api/v1/off-peak/ticket/*`), emit SSE keepalives while queued, retake an
+  expired ticket up to `ZCODE_ASYNC_MAX_RETRIES`, then forward the model
+  stream through the off-peak lane; `/async/v1/health` probes availability.
+  The ticket is bound to the request context so shaping, translation, capture
+  and metering reuse the normal path.
+- Manual plan claim: `zcode-bridge claim list|now`, `GET`/`POST /v1/claim` and
+  a dashboard card. Campaigns come from the billing preview plus marketing
+  banner buttons; the scheduler (`ZCODE_CLAIM_ENABLED`, `ZCODE_CLAIM_AUTO`)
+  runs every five minutes with a ten-minute failure cooldown and leaves
+  captcha-gated campaigns to the desktop app.
+- Account/plan switch: `GET /v1/accounts` and `POST /v1/accounts/switch`
+  (`{"id":…}`) plus a Status-tab selector that changes the rotation head.
+- Inspector persistence and replay: redacted exchanges append to
+  `data/capture.jsonl` (reloaded up to the ring size, compacted past 8 MB),
+  `GET /inspect?format=har` exports HAR 1.2, and
+  `POST /inspect/replay?id=N` re-issues a captured request in-process
+  (truncated bodies refused); dashboard gains "Ekspor HAR" and "Putar ulang".
+- Optional `config.yaml` (`ZCODE_CONFIG`) mapped onto environment variables
+  with env precedence, `config.example.yaml`, non-root `Dockerfile`,
+  `docker-compose.yml`, and GitHub release checking (`internal/update`,
+  `zcode-bridge update-check`, startup notice; `ZCODE_UPDATE_CHECK=off`
+  disables it).
 
 ## [0.1.0] - 2026-11-01
 

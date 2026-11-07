@@ -19,9 +19,14 @@ import (
 
 	"github.com/azrinaldi/zcode-bridge/internal/accounts"
 	"github.com/azrinaldi/zcode-bridge/internal/auth"
+	"github.com/azrinaldi/zcode-bridge/internal/claim"
+	"github.com/azrinaldi/zcode-bridge/internal/config"
 	"github.com/azrinaldi/zcode-bridge/internal/identity"
+	"github.com/azrinaldi/zcode-bridge/internal/offpeak"
 	"github.com/azrinaldi/zcode-bridge/internal/server"
 	"github.com/azrinaldi/zcode-bridge/internal/transport"
+	"github.com/azrinaldi/zcode-bridge/internal/tui"
+	"github.com/azrinaldi/zcode-bridge/internal/update"
 )
 
 const version = "0.1.0"
@@ -36,6 +41,9 @@ func envInt(key string, fallback int) int {
 }
 
 func main() {
+	if err := config.Load(); err != nil {
+		fmt.Fprintf(os.Stderr, "config: %v\n", err)
+	}
 	args := os.Args[1:]
 	if len(args) > 0 && args[0] == "login" {
 		runLogin(args[1:])
@@ -45,7 +53,99 @@ func main() {
 		fmt.Printf("zcode-bridge %s\n", version)
 		return
 	}
+	if len(args) > 0 && args[0] == "tui" {
+		runTUI()
+		return
+	}
+	if len(args) > 0 && args[0] == "claim" {
+		runClaim(args[1:])
+		return
+	}
+	if len(args) > 0 && (args[0] == "update-check" || args[0] == "check-update") {
+		runUpdateCheck()
+		return
+	}
 	serve()
+}
+
+func runUpdateCheck() {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	msg, err := update.Check(ctx, version)
+	switch {
+	case err != nil:
+		fmt.Printf("pemeriksaan update tidak tersedia: %v\n", err)
+	case msg == "":
+		fmt.Printf("sudah versi terbaru (v%s)\n", version)
+	default:
+		fmt.Println(msg)
+	}
+}
+
+// runClaim implements `zcode-bridge claim [list|now]`: list claimable
+// weekend/trial campaigns or claim the best one immediately.
+func runClaim(args []string) {
+	mode := "now"
+	if len(args) > 0 {
+		mode = strings.ToLower(strings.TrimSpace(args[0]))
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	switch mode {
+	case "list", "ls":
+		plans, err := claim.ListPlans(ctx)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "claim list: %v\n", err)
+			os.Exit(1)
+		}
+		if len(plans) == 0 {
+			fmt.Println("tidak ada plan yang bisa diklaim saat ini")
+			return
+		}
+		for _, p := range plans {
+			window := ""
+			if p.StartsAt > 0 {
+				window = " mulai " + time.UnixMilli(p.StartsAt).Format("2006-01-02 15:04")
+			}
+			if p.EndsAt > 0 {
+				window += " s.d. " + time.UnixMilli(p.EndsAt).Format("2006-01-02 15:04")
+			}
+			fmt.Printf("%s\tprioritas=%d\tsumber=%s%s\n", p.PlanID, p.Priority, p.Source, window)
+		}
+	case "now", "":
+		out, err := claim.ClaimBest(ctx)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "claim: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("plan %s diklaim", out.PlanID)
+		if out.StartsAt > 0 {
+			fmt.Printf(" (mulai %s)", time.UnixMilli(out.StartsAt).Format("2006-01-02 15:04"))
+		}
+		fmt.Println()
+	default:
+		fmt.Fprintf(os.Stderr, "usage: zcode-bridge claim [list|now]\n")
+		os.Exit(2)
+	}
+}
+
+func runTUI() {
+	host := strings.TrimSpace(os.Getenv("HOST"))
+	if host == "" || host == "0.0.0.0" || host == "::" {
+		host = "127.0.0.1"
+	}
+	port := strings.TrimSpace(os.Getenv("PORT"))
+	if port == "" {
+		port = "20131"
+	}
+	err := tui.Run(tui.Config{
+		BaseURL: "http://" + host + ":" + port,
+		Token:   os.Getenv("ZCODE_BRIDGE_TOKEN"),
+	})
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "tui:", err)
+		os.Exit(1)
+	}
 }
 
 func runLogin(args []string) {
@@ -161,8 +261,8 @@ func serve() {
 		host = "127.0.0.1"
 	}
 	cfg := server.Config{
-		Port:        envInt("PORT", 20131),
-		Host:        host,
+		Port: envInt("PORT", 20131),
+		Host: host,
 
 		BridgeToken: strings.TrimSpace(os.Getenv("ZCODE_BRIDGE_TOKEN")),
 	}
@@ -185,6 +285,21 @@ func serve() {
 	}
 	fmt.Printf("zcode-bridge %s listening on %s:%d\n  lane: zcode-plan/anthropic -> %s\n  plan jwt: %s\n  device mid: %s\n  auth: %s\n",
 		version, cfg.Host, cfg.Port, transport.InferenceOrigin+transport.PlanAnthropicPath, jwtState, midState, authMode)
+	if offpeak.Enabled() {
+		fmt.Println("  idle channel: /async/v1/* aktif (tiket off-peak)")
+	}
+	if cc := claim.LoadConfig(); cc.Enabled && cc.Auto {
+		fmt.Println("  claim plan: scheduler aktif (5 menit), lihat /v1/claim")
+	}
+	if update.Enabled() {
+		go func() {
+			uctx, ucancel := context.WithTimeout(ctx, 8*time.Second)
+			defer ucancel()
+			if msg, err := update.Check(uctx, version); err == nil && msg != "" {
+				fmt.Println("  " + msg)
+			}
+		}()
+	}
 
 	// Background refresh: check every 15m (ZCODE_REFRESH_INTERVAL_MS),
 	// refresh accounts expiring within 2h.

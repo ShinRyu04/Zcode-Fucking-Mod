@@ -152,6 +152,97 @@ func TestMCPEndpointAggregatesAndCalls(t *testing.T) {
 	}
 }
 
+func TestMCPAutomaticToolLoopOpenAI(t *testing.T) {
+	setupBridge(t)
+	upstream := fakeMCPUpstream(t)
+	useMCPConfig(t, fmt.Sprintf(`{"mcpServers":{"demo":{"url":%q}}}`, upstream.URL))
+	t.Setenv("ZCODE_MCP", "1")
+	resetSeen()
+
+	status, text, body := doRequest(t, "POST", "/v1/chat/completions", map[string]any{
+		"model":    "glm-5.3-flash",
+		"messages": []any{map[string]any{"role": "user", "content": "weather in Jakarta?"}},
+	})
+	if status != 200 {
+		t.Fatalf("tool loop status %d: %s", status, text)
+	}
+	choices := body["choices"].([]any)
+	message := choices[0].(map[string]any)["message"].(map[string]any)
+	if message["content"] != "TOOL-FINAL" || choices[0].(map[string]any)["finish_reason"] != "stop" {
+		t.Fatalf("final response: %v", body)
+	}
+	seen.mu.Lock()
+	defer seen.mu.Unlock()
+	tools := seen.anthropic["tools"].([]any)
+	if len(tools) != 1 || tools[0].(map[string]any)["name"] != "demo__weather" {
+		t.Fatalf("injected tools: %v", tools)
+	}
+	messages := seen.anthropic["messages"].([]any)
+	if len(messages) != 3 || messages[0].(map[string]any)["role"] != "user" {
+		t.Fatalf("follow-up dropped earlier turns: %v", messages)
+	}
+	wire, _ := json.Marshal(messages)
+	if !strings.Contains(string(wire), `"tool_result"`) || !strings.Contains(string(wire), `sunny in`) {
+		t.Fatalf("MCP result did not reach follow-up model turn: %s", wire)
+	}
+}
+
+func TestMCPAutomaticToolLoopAnthropic(t *testing.T) {
+	setupBridge(t)
+	upstream := fakeMCPUpstream(t)
+	useMCPConfig(t, fmt.Sprintf(`{"mcpServers":{"demo":{"url":%q}}}`, upstream.URL))
+	t.Setenv("ZCODE_MCP", "1")
+
+	status, text, body := doRequest(t, "POST", "/v1/messages", map[string]any{
+		"model": "glm-5.3-flash", "max_tokens": 100,
+		"messages": []any{map[string]any{"role": "user", "content": "weather?"}},
+	})
+	if status != 200 {
+		t.Fatalf("tool loop status %d: %s", status, text)
+	}
+	content := body["content"].([]any)
+	if len(content) != 1 || content[0].(map[string]any)["text"] != "TOOL-FINAL" {
+		t.Fatalf("final response: %v", body)
+	}
+}
+
+func TestMCPAutomaticLoopDoesNotHijackClientTools(t *testing.T) {
+	setupBridge(t)
+	upstream := fakeMCPUpstream(t)
+	useMCPConfig(t, fmt.Sprintf(`{"mcpServers":{"demo":{"url":%q}}}`, upstream.URL))
+	t.Setenv("ZCODE_MCP", "1")
+
+	status, text, body := doRequest(t, "POST", "/v1/chat/completions", map[string]any{
+		"model":    "glm-5.3-flash",
+		"messages": []any{map[string]any{"role": "user", "content": "weather?"}},
+		"tools": []any{map[string]any{"type": "function", "function": map[string]any{
+			"name": "get_weather", "parameters": map[string]any{"type": "object"},
+		}}},
+	})
+	if status != 200 {
+		t.Fatalf("client tools status %d: %s", status, text)
+	}
+	choice := body["choices"].([]any)[0].(map[string]any)
+	if choice["finish_reason"] != "tool_calls" {
+		t.Fatalf("client-owned tool should be returned, not executed: %v", body)
+	}
+}
+
+func TestMCPAutomaticLoopRejectsStreaming(t *testing.T) {
+	setupBridge(t)
+	upstream := fakeMCPUpstream(t)
+	useMCPConfig(t, fmt.Sprintf(`{"mcpServers":{"demo":{"url":%q}}}`, upstream.URL))
+	t.Setenv("ZCODE_MCP", "1")
+
+	status, text, _ := doRequest(t, "POST", "/v1/chat/completions", map[string]any{
+		"model": "glm-5.3-flash", "stream": true,
+		"messages": []any{map[string]any{"role": "user", "content": "weather?"}},
+	})
+	if status != 400 || !strings.Contains(text, "stream=false") {
+		t.Fatalf("streaming auto-loop status %d: %s", status, text)
+	}
+}
+
 func TestMCPEndpointWithoutServers(t *testing.T) {
 	setupBridge(t)
 	useMCPConfig(t, "")

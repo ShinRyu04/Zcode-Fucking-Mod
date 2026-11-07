@@ -25,10 +25,12 @@ const (
 	DefaultDir = "data"
 	// maxBootLines caps the startup scan.
 	maxBootLines = 10000
-	// recentLimit is how many rows the dashboard can draw. It has to cover a
-	// 15-minute rolling window at plan-lane rates (a few requests/second
-	// during bursts), not just the last 60 bars.
-	recentLimit = 2000
+	// recentLimit is how many rows the dashboard can draw. It has to cover
+	// the 7-day trend view and the 15-minute rolling window at plan-lane
+	// rates (a few requests/second during bursts), not just the last 60 bars.
+	// Beyond this bound the 7-day figures are computed from the newest rows
+	// only, which keeps memory flat without a database.
+	recentLimit = 10000
 	// tailBytes bounds one file read during the startup scan.
 	tailBytes = 4 << 20
 )
@@ -63,13 +65,23 @@ type Stats struct {
 	OutputTokens    int64                 `json:"output_tokens"`
 	CacheReadTokens int64                 `json:"cache_read_tokens"`
 	AvgTPS          float64               `json:"avg_tps"`
+	HighTPS         float64               `json:"high_tps"`
 	PerModel        map[string]ModelStats `json:"per_model"`
+}
+
+// Rings is the compact gauge trio: the newest measured request, the highest
+// request ever metered, and the per-token average of the last seven days.
+type Rings struct {
+	LastTPS        float64 `json:"last_tps"`
+	HighTPS        float64 `json:"high_tps"`
+	SevenDayAvgTPS float64 `json:"seven_day_avg_tps"`
 }
 
 // Snapshot is the GET /v1/usage payload.
 type Snapshot struct {
 	Today   Stats `json:"today"`
 	AllTime Stats `json:"all_time"`
+	Rings   Rings `json:"rings"`
 	Recent  []Row `json:"recent"`
 }
 
@@ -87,6 +99,7 @@ type acc struct {
 	cache         int64
 	genMS         int64
 	genTokens     int64
+	highTPS       float64
 	models        map[string]*modelAcc
 }
 
@@ -97,6 +110,9 @@ func (a *acc) add(row Row) {
 	a.input += row.InputTokens
 	a.output += row.OutputTokens
 	a.cache += row.CacheReadTokens
+	if row.TPS > a.highTPS {
+		a.highTPS = row.TPS
+	}
 	if row.TPS > 0 && row.GenMS > 0 {
 		a.genMS += row.GenMS
 		a.genTokens += row.OutputTokens
@@ -119,7 +135,7 @@ func (a *acc) add(row Row) {
 func (a *acc) stats() Stats {
 	out := Stats{
 		Requests: a.requests, InputTokens: a.input, OutputTokens: a.output,
-		CacheReadTokens: a.cache, AvgTPS: tps(a.genTokens, a.genMS),
+		CacheReadTokens: a.cache, AvgTPS: tps(a.genTokens, a.genMS), HighTPS: a.highTPS,
 		PerModel: map[string]ModelStats{},
 	}
 	for name, m := range a.models {
@@ -253,8 +269,34 @@ func Current() Snapshot {
 	return Snapshot{
 		Today:   current.today.stats(),
 		AllTime: current.all.stats(),
+		Rings:   ringStats(recent, current.all.highTPS),
 		Recent:  recent,
 	}
+}
+
+// ringStats derives the gauge trio from the retained rows: newest measured
+// request, highest request, and the token-weighted average of the last seven
+// days (same tps() math as the aggregate windows).
+func ringStats(recent []Row, highTPS float64) Rings {
+	rings := Rings{HighTPS: highTPS}
+	cutoff := time.Now().Add(-7 * 24 * time.Hour)
+	var tokens, genMS int64
+	for i := len(recent) - 1; i >= 0; i-- {
+		row := recent[i]
+		if row.TPS > 0 {
+			rings.LastTPS = row.TPS
+			break
+		}
+	}
+	for _, row := range recent {
+		if row.At.Before(cutoff) || row.TPS <= 0 || row.GenMS <= 0 {
+			continue
+		}
+		tokens += row.OutputTokens
+		genMS += row.GenMS
+	}
+	rings.SevenDayAvgTPS = tps(tokens, genMS)
+	return rings
 }
 
 func dayKey(t time.Time) string {

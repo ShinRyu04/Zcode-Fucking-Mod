@@ -6,7 +6,9 @@ package server
 // synthetic fixtures (unsigned base64 payloads), never secrets.
 
 import (
+	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -126,9 +128,33 @@ func stubGateway() *httptest.Server {
 		stream := body["stream"] == true
 		if !stream {
 			if len(tools) > 0 {
+				messages, _ := body["messages"].([]any)
+				hasToolResult := false
+				for _, rawMessage := range messages {
+					message, _ := rawMessage.(map[string]any)
+					content, _ := message["content"].([]any)
+					for _, rawBlock := range content {
+						block, _ := rawBlock.(map[string]any)
+						if block["type"] == "tool_result" || block["type"] == "mcp_tool_result" {
+							hasToolResult = true
+						}
+					}
+				}
+				if hasToolResult {
+					writeJSON(w, 200, map[string]any{
+						"id": "msg_stub_final", "type": "message", "role": "assistant", "model": "glm-5.3-flash",
+						"content": []any{map[string]any{"type": "text", "text": "TOOL-FINAL"}}, "stop_reason": "end_turn",
+						"usage": map[string]any{"input_tokens": 20, "output_tokens": 4},
+					})
+					return
+				}
+				toolName := "get_weather"
+				if first, ok := tools[0].(map[string]any); ok && str(first["name"]) != "" {
+					toolName = str(first["name"])
+				}
 				writeJSON(w, 200, map[string]any{
 					"id": "msg_stub", "type": "message", "role": "assistant", "model": "glm-5.3-flash",
-					"content":     []any{map[string]any{"type": "tool_use", "id": "toolu_stub", "name": "get_weather", "input": map[string]any{"city": "Jakarta"}}},
+					"content":     []any{map[string]any{"type": "tool_use", "id": "toolu_stub", "name": toolName, "input": map[string]any{"city": "Jakarta"}}},
 					"stop_reason": "tool_use", "usage": map[string]any{"input_tokens": 11, "output_tokens": 7},
 				})
 				return
@@ -307,7 +333,7 @@ func resetSeen() {
 func TestDashboardServesStatusPage(t *testing.T) {
 	setupBridge(t)
 	resetSeen()
-	res, err := http.Get(bridgeURL() + "/dashboard")
+	res, err := http.Get(bridgeURL() + "/classic")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -326,11 +352,124 @@ func TestDashboardServesStatusPage(t *testing.T) {
 	for _, want := range []string{"zcode-bridge", "/health", "/quota", "id=\"health\"", "id=\"quota\"",
 		"Inspector", "id=\"panel-inspector\"", "/inspect?limit=200",
 		"Penggunaan", "id=\"panel-usage\"", "renderUsageChart", "/v1/usage",
-		"Playground", "id=\"panel-playground\"", "gaugeCard", "renderRolling", "/overlay",
-		"Aplikasi ZCode", "id=\"udchart\"", "renderDesktop", "desktopChart", "id=\"udrange\""} {
+		"Playground", "id=\"panel-playground\"", "gaugeCard", "renderRangeChart", "renderModelTrend", "id=\"urange\"",
+		"Modul tampilan", "Monitor jaringan", "renderNet", "id=\"statusbar\"", "/overlay",
+		"Aplikasi ZCode", "id=\"udchart\"", "renderDesktop", "desktopChart", "id=\"udrange\"",
+		"id=\"claimcard\"", "loadClaimPlans", "id=\"accsel\"", "switchAccount"} {
 		if !strings.Contains(page, want) {
 			t.Fatalf("dashboard page missing %q", want)
 		}
+	}
+}
+
+func TestDashboardServesShell(t *testing.T) {
+	setupBridge(t)
+	res, err := http.Get(bridgeURL() + "/dashboard")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != 200 {
+		t.Fatalf("status %d", res.StatusCode)
+	}
+	if ct := res.Header.Get("Content-Type"); !strings.Contains(ct, "text/html") {
+		t.Fatalf("content-type = %q", ct)
+	}
+	raw, _ := io.ReadAll(res.Body)
+	page := string(raw)
+	for _, want := range []string{"/assets/app.css", "/assets/app.js", "/assets/chat.js",
+		"id=\"view\"", "id=\"nav\"", "id=\"tokendlg\"", "Ringkasan", "Chat"} {
+		if !strings.Contains(page, want) {
+			t.Fatalf("dashboard shell missing %q", want)
+		}
+	}
+
+	asset, err := http.Get(bridgeURL() + "/assets/app.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer asset.Body.Close()
+	if asset.StatusCode != 200 {
+		t.Fatalf("asset status %d", asset.StatusCode)
+	}
+	if ct := asset.Header.Get("Content-Type"); !strings.Contains(ct, "javascript") {
+		t.Fatalf("asset content-type = %q", ct)
+	}
+	js, _ := io.ReadAll(asset.Body)
+	for _, want := range []string{"/v1/events", "/v1/settings", "/v1/quota", "/inspect"} {
+		if !strings.Contains(string(js), want) {
+			t.Fatalf("app.js missing %q", want)
+		}
+	}
+}
+
+func TestEventsStreamsSnapshot(t *testing.T) {
+	setupBridge(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, bridgeURL()+"/v1/events", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != 200 {
+		t.Fatalf("status %d", res.StatusCode)
+	}
+	if ct := res.Header.Get("Content-Type"); !strings.Contains(ct, "text/event-stream") {
+		t.Fatalf("content-type = %q", ct)
+	}
+	reader := bufio.NewReader(res.Body)
+	var data string
+	for i := 0; i < 8; i++ {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			t.Fatalf("read frame: %v", err)
+		}
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "data:") {
+			data = strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+			break
+		}
+	}
+	if data == "" {
+		t.Fatal("no data frame")
+	}
+	var snap map[string]any
+	if err := json.Unmarshal([]byte(data), &snap); err != nil {
+		t.Fatalf("frame json: %v", err)
+	}
+	for _, key := range []string{"usage", "net", "health"} {
+		if _, ok := snap[key]; !ok {
+			t.Fatalf("snapshot missing %q: %s", key, data)
+		}
+	}
+	usageBody := snap["usage"].(map[string]any)
+	if _, ok := usageBody["rings"]; !ok {
+		t.Fatalf("usage missing rings: %v", usageBody)
+	}
+}
+
+func TestSettingsReportsEffectiveConfig(t *testing.T) {
+	setupBridge(t)
+	status, _, body := doRequest(t, "GET", "/v1/settings", nil)
+	if status != 200 {
+		t.Fatalf("status %d", status)
+	}
+	if body["lane"] != "zcode-plan/anthropic" {
+		t.Fatalf("lane = %v", body["lane"])
+	}
+	if _, ok := body["capture"].(map[string]any); !ok {
+		t.Fatalf("capture = %v", body["capture"])
+	}
+	if _, ok := body["env"].(map[string]any); !ok {
+		t.Fatalf("env = %v", body["env"])
+	}
+	if body["port"] == nil {
+		t.Fatal("port missing")
 	}
 }
 
@@ -784,6 +923,108 @@ func TestInspectCapturesExchange(t *testing.T) {
 	}
 }
 
+func TestInspectHARAndReplay(t *testing.T) {
+	setupBridge(t)
+	resetSeen()
+	capture.Clear()
+	status, text, _ := doRequest(t, "POST", "/v1/chat/completions", map[string]any{
+		"model": "glm-5.3-flash", "messages": []any{map[string]any{"role": "user", "content": "replay me"}},
+	})
+	if status != 200 {
+		t.Fatalf("chat status %d: %s", status, text)
+	}
+	_, _, listing := doRequest(t, "GET", "/inspect?limit=10", nil)
+	entries := listing["entries"].([]any)
+	if len(entries) != 1 {
+		t.Fatalf("entries = %d", len(entries))
+	}
+	id := int64(entries[0].(map[string]any)["id"].(float64))
+
+	code, raw, har := doRequest(t, "GET", "/inspect?format=har", nil)
+	if code != 200 {
+		t.Fatalf("har status %d: %s", code, raw)
+	}
+	log, _ := har["log"].(map[string]any)
+	if log == nil || str(log["version"]) != "1.2" {
+		t.Fatalf("har log = %v", har["log"])
+	}
+	harEntries, _ := log["entries"].([]any)
+	if len(harEntries) != 1 {
+		t.Fatalf("har entries = %d", len(harEntries))
+	}
+	first := harEntries[0].(map[string]any)
+	req, _ := first["request"].(map[string]any)
+	if req == nil || str(req["method"]) != "POST" || !strings.Contains(str(req["url"]), "/v1/chat/completions") {
+		t.Fatalf("har request = %v", first["request"])
+	}
+	resp, _ := first["response"].(map[string]any)
+	if resp == nil || resp["status"].(float64) != 200 {
+		t.Fatalf("har response = %v", first["response"])
+	}
+
+	code, raw, replayed := doRequest(t, "POST", "/inspect/replay?id="+fmt.Sprint(id), nil)
+	if code != 200 {
+		t.Fatalf("replay status %d: %s", code, raw)
+	}
+	if replayed["ok"] != true || replayed["status"].(float64) != 200 {
+		t.Fatalf("replay payload = %v", replayed)
+	}
+	if !strings.Contains(str(replayed["body"]), "STUB-OK") {
+		t.Fatalf("replay body = %q", replayed["body"])
+	}
+	_, _, after := doRequest(t, "GET", "/inspect?limit=10", nil)
+	if got := len(after["entries"].([]any)); got != 2 {
+		t.Fatalf("replay was not captured: %d entries", got)
+	}
+}
+
+func TestAccountsListAndSwitch(t *testing.T) {
+	setupBridge(t)
+	code, raw, body := doRequest(t, "GET", "/v1/accounts", nil)
+	if code != 200 {
+		t.Fatalf("accounts status %d: %s", code, raw)
+	}
+	if body["ok"] != true {
+		t.Fatalf("accounts payload = %v", body)
+	}
+	if _, ok := body["accounts"].([]any); !ok && body["accounts"] != nil {
+		t.Fatalf("accounts = %v", body["accounts"])
+	}
+	code, raw, body = doRequest(t, "POST", "/v1/accounts/switch", map[string]any{"id": "missing-account"})
+	if code != 404 {
+		t.Fatalf("switch missing status %d: %s", code, raw)
+	}
+	if body["ok"] != false {
+		t.Fatalf("switch payload = %v", body)
+	}
+	code, _, _ = doRequest(t, "POST", "/v1/accounts/switch", map[string]any{})
+	if code != 400 {
+		t.Fatalf("switch without id status = %d", code)
+	}
+}
+
+func TestAsyncAndClaimRoutes(t *testing.T) {
+	setupBridge(t)
+	t.Setenv("ZCODE_ASYNC_ENABLED", "")
+	code, raw, body := doRequest(t, "GET", "/async/v1/health", nil)
+	if code != 400 {
+		t.Fatalf("async health disabled status %d: %s", code, raw)
+	}
+	if body["enabled"] != false {
+		t.Fatalf("async health payload = %v", body)
+	}
+	t.Setenv("ZCODE_ASYNC_ENABLED", "1")
+	code, raw, _ = doRequest(t, "GET", "/async/v1/health", nil)
+	if code != 502 {
+		t.Fatalf("async health without jwt status %d: %s", code, raw)
+	}
+	t.Setenv("ZCODE_CLAIM_ORIGIN", "http://127.0.0.1:1")
+	code, raw, _ = doRequest(t, "GET", "/v1/claim", nil)
+	if code != 502 {
+		t.Fatalf("claim list unreachable origin status %d: %s", code, raw)
+	}
+}
+
 func TestInspectCapturesStreamFlags(t *testing.T) {
 	setupBridge(t)
 	resetSeen()
@@ -1092,9 +1333,19 @@ func TestOverlayServesSpeedReadout(t *testing.T) {
 	}
 	raw, _ := io.ReadAll(res.Body)
 	page := string(raw)
-	for _, want := range []string{"tok/dtk", "/v1/usage", "rata-rata hari ini"} {
+	for _, want := range []string{"tok/dtk", "/v1/usage", "rata-rata hari ini", "data-mode=\"pet\"", "data-mode=\"capsule\"", "zbOverlayMode", "id=\"arc\""} {
 		if !strings.Contains(page, want) {
 			t.Fatalf("overlay page missing %q", want)
+		}
+	}
+	for _, path := range []string{"/overlay/gauge", "/overlay/mini", "/overlay/pet", "/overlay/capsule"} {
+		res, err := http.Get(bridgeURL() + path)
+		if err != nil {
+			t.Fatalf("%s: %v", path, err)
+		}
+		res.Body.Close()
+		if res.StatusCode != 200 {
+			t.Fatalf("%s status = %d", path, res.StatusCode)
 		}
 	}
 }
