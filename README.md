@@ -109,6 +109,8 @@ curl -s http://127.0.0.1:20131/v1/chat/completions \
 | `GET /inspect?limit=N&full=1` | — | JSON export with bodies (≤50 entries) |
 | `DELETE /inspect` | — | drop every captured exchange |
 | `GET /v1/usage` | — | token + throughput aggregates: `today`, `all_time`, `recent`, plus a separate `desktop` block read from the ZCode CLI database (needs `ZCODE_BRIDGE_TOKEN` when set) |
+| `POST /mcp` | MCP | JSON-RPC 2.0 endpoint: `initialize`, `tools/list`, `tools/call` over every configured upstream server |
+| `GET /mcp` | — | MCP catalog page (servers, flattened tools, ready-to-paste client config); `?format=json` for the object |
 | `GET /health` | — | lane, credential ring, device-mid state |
 
 Streaming: Anthropic callers get the upstream SSE stream untouched; OpenAI
@@ -145,6 +147,7 @@ indexing, terminated with `[DONE]`).
 | `ZCODE_USAGE_DIR` | `data` | where `usage-YYYYMMDD.jsonl` rows are appended (0700 dir, 0600 file) |
 | `ZCODE_DB` | `~/.zcode/cli/db/db.sqlite` | ZCode CLI usage database read (never written) for the desktop half of the Penggunaan tab |
 | `ZCODE_DESKTOP` | *(on)* | `0` = stop reading the desktop database entirely |
+| `ZCODE_MCP_SERVERS` | *(unset = no upstreams)* | path to (or inline) JSON listing MCP servers; accepts both `{"servers":[…]}` and `{"mcpServers":{…}}` |
 
 ## Lane rules (verified against production)
 
@@ -314,6 +317,18 @@ Changes made in this fork, relative to upstream `azrinaldi/zcode-bridge`:
    separate `desktop` object so bridge-measured and application-reported
    numbers are never silently mixed; the dashboard's **Penggunaan** tab shows
    both side by side with its own range and view switches.
+
+9. **One MCP endpoint over many servers**: `POST /mcp` is a JSON-RPC 2.0
+   server that flattens every configured upstream tool into
+   `{server}__{tool}`. Upstreams are started or connected lazily on the first
+   request from `ZCODE_MCP_SERVERS`; both stdio children (newline-delimited
+   JSON, with pagination and a stderr ring for diagnostics) and the streamable
+   HTTP transport (JSON or SSE answers, `Mcp-Session-Id` continuity) are
+   implemented in `internal/mcp` with no dependency. A failing server never
+   takes the endpoint down: its error is reported on the `GET /mcp` catalog
+   next to the healthy ones, and tool-name collisions are resolved by keeping
+   the first and flagging the server. `GET /mcp` doubles as the setup page —
+   it prints the exact `mcpServers` block for Claude/Codex-style clients.
 
 ## Credits
 

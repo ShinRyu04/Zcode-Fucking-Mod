@@ -29,6 +29,13 @@ versions follow [SemVer](https://semver.org/).
   sessions from `message` rows without a completion stamp.
 - `/v1/usage` now carries a separate `desktop` object (path, availability,
   snapshot); `ZCODE_DB` and `ZCODE_DESKTOP` control it.
+- MCP endpoint: `POST /mcp` (JSON-RPC 2.0 `initialize`/`tools/list`/
+  `tools/call`, batch and notifications included) aggregating every upstream
+  server listed in `ZCODE_MCP_SERVERS`, tools flattened as `{server}__{tool}`;
+  `GET /mcp` serves a catalog page plus the matching client config.
+- `internal/mcp`: dependency-free MCP client — stdio children and streamable
+  HTTP (JSON or SSE, `Mcp-Session-Id`), pagination, per-server failure
+  reporting, deterministic namespacing.
 - Dashboard **Penggunaan**: "Aplikasi ZCode" section with the same numbers,
   a range switch (15 mnt / 1 jam / 6 jam / 24 jam), a curve/per-model switch,
   and an explicit note that these rows come from `db.sqlite`, not from bridge

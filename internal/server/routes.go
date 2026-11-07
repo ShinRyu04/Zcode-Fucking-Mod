@@ -60,6 +60,8 @@ func route(w http.ResponseWriter, r *http.Request) {
 		if requireObservabilityToken(w, r) {
 			handleUsage(w, r)
 		}
+	case (r.Method == http.MethodGet || r.Method == http.MethodPost || r.Method == http.MethodDelete) && pathName == "/mcp":
+		handleMCP(w, r)
 	case r.Method == http.MethodPost && pathName == "/v1/messages":
 		requireAuth(w, r, "anthropic", func() {
 			handlePost(w, r, accountID, handleMessages)
