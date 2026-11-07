@@ -6,6 +6,7 @@
 //	POST /v1/chat/completions   OpenAI wire format
 //	GET  /v1/models             live plan entitlements (fallback: static list)
 //	GET  /v1/quota, /quota      billing readout
+//	GET  /dashboard             built-in status page (reads /health + /quota)
 //	GET  /health                lane + credential state
 //
 // Auth for local clients is optional: set ZCODE_BRIDGE_TOKEN to require

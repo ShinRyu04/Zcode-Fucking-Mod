@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -295,6 +296,32 @@ func resetSeen() {
 	seen.refreshCalls = 0
 	seen.currentHdr = nil
 	seen.balanceHdr = nil
+}
+
+func TestDashboardServesStatusPage(t *testing.T) {
+	setupBridge(t)
+	resetSeen()
+	res, err := http.Get(bridgeURL() + "/dashboard")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != 200 {
+		t.Fatalf("status %d", res.StatusCode)
+	}
+	if ct := res.Header.Get("Content-Type"); !strings.Contains(ct, "text/html") {
+		t.Fatalf("content-type = %q", ct)
+	}
+	raw, err := io.ReadAll(res.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := string(raw)
+	for _, want := range []string{"zcode-bridge", "/health", "/quota", "id=\"health\"", "id=\"quota\""} {
+		if !strings.Contains(page, want) {
+			t.Fatalf("dashboard page missing %q", want)
+		}
+	}
 }
 
 func TestHealthReportsPlanLane(t *testing.T) {

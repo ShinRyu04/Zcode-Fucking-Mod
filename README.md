@@ -85,6 +85,7 @@ curl -s http://127.0.0.1:20131/v1/chat/completions \
 | `POST /v1/chat/completions` | OpenAI | translated both ways, incl. streaming + tools |
 | `GET /v1/models` | — | live entitlements merged across plans (static fallback when billing is down) |
 | `GET /v1/quota` | — | per-entitlement grant rows (balance-first) |
+- `GET /dashboard` - built-in status page (lane, credentials, quota; no token needed)
 | `GET /health` | — | lane, credential ring, device-mid state |
 
 Streaming: Anthropic callers get the upstream SSE stream untouched; OpenAI

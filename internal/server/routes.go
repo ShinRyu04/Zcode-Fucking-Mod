@@ -43,6 +43,8 @@ func route(w http.ResponseWriter, r *http.Request) {
 		sendJSON(w, 200, map[string]any{"object": "list", "data": liveModels(r.Context())})
 	case r.Method == http.MethodGet && (pathName == "/v1/quota" || pathName == "/quota"):
 		handleQuota(w, r, accountID)
+	case r.Method == http.MethodGet && pathName == "/dashboard":
+		handleDashboard(w)
 	case r.Method == http.MethodPost && pathName == "/v1/messages":
 		requireAuth(w, r, "anthropic", func() {
 			handlePost(w, r, accountID, handleMessages)
