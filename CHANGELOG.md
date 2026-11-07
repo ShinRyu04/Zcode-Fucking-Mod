@@ -29,6 +29,18 @@ versions follow [SemVer](https://semver.org/).
 - `GET /v1/settings`: effective configuration summary with capture/claim/env
   state; secrets are reported as presence only. `GET /v1/claim/history`
   returns this process's claim attempts (max 50).
+- Dashboard account manager: the overview lists every stored account with
+  expiry/reauth/cooldown badges, switches the active one and removes entries.
+  `POST /v1/accounts/login` starts a device flow from the browser,
+  `GET /v1/accounts/login/status` polls it and `POST
+  /v1/accounts/login/cancel` stops it; the CLI and dashboard share
+  `accounts.CompleteDeviceFlow`.
+- Dashboard agent integration: `GET /v1/integration` returns the downstream
+  base URL, bearer key/source, default model and endpoint map;
+  `POST`/`DELETE /v1/integration/key` generate, rotate or remove a persisted
+  `sk-…` key in `data/agent-key.json` (0600). `ZCODE_BRIDGE_TOKEN` still wins
+  and is read-only from the UI. Settings shows the key, a copy button and a
+  ready curl example.
 - Native layered pet in `zcode-companion`: per-pixel alpha, always-on-top,
   click-through by default, never activates, mood follows `/v1/usage`
   (offline/sleep/idle/thinking/happy/turbo), position persisted, tray toggles

@@ -73,7 +73,8 @@ func openAIError(w http.ResponseWriter, status int, message string, code any) {
 }
 
 func authorized(r *http.Request) bool {
-	if cfg.BridgeToken == "" {
+	expected := effectiveBridgeToken()
+	if expected == "" {
 		return true
 	}
 	header := r.Header.Get("Authorization")
@@ -84,7 +85,7 @@ func authorized(r *http.Request) bool {
 	if presented == "" {
 		presented = strings.TrimSpace(r.Header.Get("X-Api-Key"))
 	}
-	return presented == cfg.BridgeToken
+	return tokenEqual(presented, expected)
 }
 
 func readBody(r *http.Request) ([]byte, error) {

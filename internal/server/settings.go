@@ -66,7 +66,7 @@ func handleSettings(w http.ResponseWriter, r *http.Request) {
 }
 
 func authLabel() string {
-	if cfg.BridgeToken != "" {
+	if effectiveBridgeToken() != "" {
 		return "bridge token required"
 	}
 	return "open (localhost)"

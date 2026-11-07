@@ -1,12 +1,8 @@
-# zcode-bridge
+# zcode-bridge-mod
 
-> **Full modification — this is NOT the original project.**
-> This repository is a **modified derivative** of
-> [azrinaldi/zcode-bridge](https://github.com/azrinaldi/zcode-bridge) (MIT License,
-> copyright (c) 2026 azrinaldi). Code here differs from upstream in behaviour, not
-> only in packaging. Maintained by [ShinRyu04](https://github.com/ShinRyu04).
-> Upstream stays the canonical source; see [Modifications](#modifications) for what changed.
-> This fork lives at
+> **Full modification.**
+> Maintained by [ShinRyu04](https://github.com/ShinRyu04).
+> Repository:
 > [ShinRyu04/zcode-bridge-mod](https://github.com/ShinRyu04/zcode-bridge-mod).
 
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
@@ -23,7 +19,7 @@ login's own credential.
 
 Single static Go binary, standard library only, no runtime dependencies.
 
-This fork adds, on top of upstream:
+Key features:
 
 - `POST /v1/responses` — OpenAI Responses wire format for Codex CLI
   (`wire_api = "responses"`), streaming lifecycle included.
@@ -47,9 +43,13 @@ This fork adds, on top of upstream:
 - A console rewrite at `/dashboard`: an instrument-style SPA (hash router,
   dark/light theme, embedded assets, no CDN) covering overview, inspector,
   usage, network, claim and settings, fed live by `GET /v1/events` (SSE over
-  `fetch`, so the bridge token travels in a header). The legacy page stays at
-  `/classic`. `GET /v1/settings` reports the effective, restart-required
-  configuration without secrets.
+  `fetch`, so the bridge token travels in a header). The overview has a full
+  **account manager** (start a device-flow login from the browser, switch the
+  active account, remove one, see expiry/reauth state). Settings has an
+  **agent integration** card: downstream bearer key, base URL, default model
+  and a copyable curl example. The legacy page stays at `/classic`.
+  `GET /v1/settings` reports the effective, restart-required configuration
+  without secrets.
 - A **chat workspace** at `/chat`: multiple conversations in `localStorage`,
   model picker from `/v1/models`, streaming `/v1/chat/completions` with stop
   and regenerate, temperature/max-token controls, import/export and escaped
@@ -61,10 +61,19 @@ This fork adds, on top of upstream:
 - A **terminal panel** (`zcode-bridge tui`): live usage/rings and network
   panes on a raw ANSI console, keys `1`/`2` switch pane, `r` refreshes, `q`
   quits; no TUI library.
-- **Account/plan switching** in the dashboard Status tab (`GET /v1/accounts`,
-  `POST /v1/accounts/switch`) and a **manual plan claim** card
+- **Account/plan switching** in the dashboard overview (`GET /v1/accounts`,
+  `POST /v1/accounts/switch`), including adding an account from the browser
+  via the device flow (`POST /v1/accounts/login`, `GET
+  /v1/accounts/login/status`, `POST /v1/accounts/login/cancel`) and removing
+  one (`POST /v1/accounts/remove`), plus a **manual plan claim** card
   (`GET`/`POST /v1/claim`, `zcode-bridge claim list|now`) that polls the
   weekend/trial campaigns and claims the highest-priority one.
+- A **downstream agent key** surfaced in the dashboard: when no
+  `ZCODE_BRIDGE_TOKEN` is set, settings can generate or rotate a persisted
+  `sk-…` key (`data/agent-key.json`, mode `0600`) used as the bridge bearer,
+  and show/copy the base URL plus a curl example. `GET /v1/integration`
+  reports the effective key/source, `POST`/`DELETE /v1/integration/key`
+  rotate or remove it. The environment token always wins and is read-only.
 - An **idle (off-peak) channel** behind `ZCODE_ASYNC_ENABLED=1`:
   `POST /async/v1/messages` and `/async/v1/chat/completions` take an
   off-peak queue ticket, emit SSE keepalives while waiting, and forward the
@@ -81,10 +90,8 @@ This fork adds, on top of upstream:
 
 ## Install
 
-This fork publishes no release artifacts: build it yourself (Go 1.27+, no
-other dependencies). Upstream's prebuilt binaries are published on
-[azrinaldi/zcode-bridge releases](https://github.com/azrinaldi/zcode-bridge/releases/latest)
-but do not contain the changes below.
+No release artifacts are published here: build it yourself (Go 1.27+, no
+other dependencies).
 
 ```sh
 git clone https://github.com/ShinRyu04/zcode-bridge-mod.git
@@ -95,7 +102,8 @@ go build -o zcode-bridge ./cmd/zcode-bridge
 ```
 
 On Windows, `start-bridge.cmd` / `start-bridge-hidden.vbs` do the same headless
-(`stop-bridge.cmd` stops it).
+with `PORT=20135` (`stop-bridge.cmd` stops it). Running `./zcode-bridge`
+directly keeps the `20131` default; use whichever port you launched with.
 
 `login` prints an approval URL; open it in any browser signed in to Z.ai
 (the desktop app is not required). The resulting plan JWT + refresh token is
@@ -157,12 +165,15 @@ zcode-companion.exe -check-update      # query the latest GitHub release
 
 ## Connect anything
 
-OpenAI wire format (any SDK: set base URL to `http://127.0.0.1:20131/v1`,
+Examples below use port `20135`, which `companion.cmd` and `start-bridge.cmd`
+set. Running `zcode-bridge` directly uses `20131`; substitute your `PORT`.
+
+OpenAI wire format (any SDK: set base URL to `http://127.0.0.1:20135/v1`,
 api key to whatever / your bridge token):
 
 ```python
 from openai import OpenAI
-client = OpenAI(base_url="http://127.0.0.1:20131/v1", api_key="bridge")
+client = OpenAI(base_url="http://127.0.0.1:20135/v1", api_key="bridge")
 r = client.chat.completions.create(
     model="glm-5.3-flash",
     messages=[{"role": "user", "content": "hello"}],
@@ -170,20 +181,26 @@ r = client.chat.completions.create(
 ```
 
 Anthropic wire format (Claude Code, Aider, …: base URL
-`http://127.0.0.1:20131`, auth token ignored / bridge token):
+`http://127.0.0.1:20135`, auth token ignored / bridge token):
 
 ```sh
-export ANTHROPIC_BASE_URL=http://127.0.0.1:20131
+export ANTHROPIC_BASE_URL=http://127.0.0.1:20135
 export ANTHROPIC_AUTH_TOKEN=bridge
 ```
 
 curl:
 
 ```sh
-curl -s http://127.0.0.1:20131/v1/chat/completions \
+curl -s http://127.0.0.1:20135/v1/chat/completions \
   -H 'content-type: application/json' \
   -d '{"model":"glm-5.3-flash","messages":[{"role":"user","content":"ping"}]}'
 ```
+
+When a key exists, copy it from the dashboard's **Pengaturan → Integrasi
+agen** card and send it as `Authorization: Bearer sk-…`. The card also shows
+the base URL and a ready curl command with the model default. Requests stay
+open on loopback until a key is generated; `ZCODE_BRIDGE_TOKEN` overrides the
+dashboard key entirely.
 
 ## Routes
 
@@ -197,6 +214,13 @@ curl -s http://127.0.0.1:20131/v1/chat/completions \
 | `GET /async/v1/health` | — | queue availability probe (`can_take_number`, `next_take_at`) |
 | `GET /v1/accounts` | — | non-secret account ring for the dashboard switcher |
 | `POST /v1/accounts/switch` | — | body `{"id":"<account>"}` pins the rotation head (plan switch) |
+| `POST /v1/accounts/remove` | — | body `{"id":"<account>"}` forgets one stored account |
+| `POST /v1/accounts/login` | — | body `{"label":"…"}` starts a device flow; returns `flow_id`, `authorize_url`, `expires_at` |
+| `GET /v1/accounts/login/status?flow_id=…` | — | `pending` / `ok` / `error` / `cancelled`, with the new account on success |
+| `POST /v1/accounts/login/cancel` | — | body `{"flow_id":"…"}` stops waiting for approval |
+| `GET /v1/integration` | — | downstream base URL, bearer key/source, default model, endpoint map |
+| `POST /v1/integration/key` | — | generate or rotate the persisted downstream key (409 when `ZCODE_BRIDGE_TOKEN` is set) |
+| `DELETE /v1/integration/key` | — | remove the persisted key (409 when `ZCODE_BRIDGE_TOKEN` is set) |
 | `GET /v1/claim` | — | claimable weekend/trial campaigns (billing preview + marketing banner) |
 | `POST /v1/claim` | — | body `{"plan_id":"…"}` or empty for highest priority |
 | `GET /v1/models` | — | live entitlements merged across plans (static fallback when billing is down) |
@@ -230,7 +254,9 @@ indexing, terminated with `[DONE]`).
 | Variable | Default | Purpose |
 |---|---|---|
 | `PORT` / `HOST` | `20131` / `127.0.0.1` | listen address (keep it loopback unless you front it with auth) |
-| `ZCODE_BRIDGE_TOKEN` | *(unset = open)* | require `Authorization: Bearer` or `x-api-key` on inference routes |
+| `ZCODE_BRIDGE_TOKEN` | *(unset = open)* | require `Authorization: Bearer` or `x-api-key` on inference routes; wins over the dashboard key |
+| `ZCODE_AGENT_KEY_FILE` | `data/agent-key.json` | persisted downstream key written by `POST /v1/integration/key` (0600) |
+| `ZCODE_DEFAULT_MODEL` | `glm-5.3-flash` | model shown in the dashboard integration snippet |
 | `ZCODE_PLAN_JWT` | — | explicit plan JWT (highest-priority credential) |
 | `ZCODE_PLAN_JWT_FILE` | `./plan-jwt.json` | single-token fallback file |
 | `ZCODE_ACCOUNTS_FILE` | `data/accounts.json` | account ring store (0600) |
@@ -296,6 +322,14 @@ request with `?account=<id>` (or the `x-zcode-account` header) to skip
 rotation. A 401 triggers one best-effort refresh against the token endpoint
 before rotating. Background refresh runs every 15 minutes for tokens
 expiring within 2 hours.
+
+The dashboard has a dedicated **Akun** page (`/dashboard#/accounts`) and the
+same manager on the overview. It lists every stored account with its expiry
+and reauth/cooldown badges. **Hubungkan akun** starts a device flow from the
+browser (open the returned approval URL, then the card refreshes when the
+poll succeeds), **Aktifkan** pins the default account and **Hapus** forgets
+one. The CLI and the dashboard share the same
+`accounts.CompleteDeviceFlow` path, so both store identical credentials.
 
 ## Files
 
@@ -407,26 +441,21 @@ User=you
 WantedBy=multi-user.target
 ```
 
-## Modifications
+## Implementation notes
 
-Changes made in this fork, relative to upstream `azrinaldi/zcode-bridge`:
+Behaviour and features that make up this build:
 
-1. **Plan JWT without an `exp` claim no longer self-destructs after 24h.**
-   Upstream stamped `expiresAt = now + 24h` when the plan JWT carried no `exp`,
-   and `accounts.Usable()` skips accounts whose `expiresAt` has passed — so a
-   perfectly valid, non-expiring plan token was dropped one day after
-   `zcode-bridge login`, silently falling back to weaker credential sources and
-   causing stalls. Now `expiresAt` stays `0` for such tokens (which
-   `auth.IsExpired` already treated as never expiring). File:
+1. **Plan JWT without an `exp` claim stays valid.** Such a token is stored with
+   `expiresAt = 0`, and `accounts.Usable()` only drops accounts whose recorded
+   expiry has passed. A non-expiring plan token is therefore never discarded
+   after 24h and does not fall back to weaker credential sources. File:
    `cmd/zcode-bridge/main.go`.
 2. **Windows start/stop scripts** — `start-bridge.cmd`, `start-bridge-hidden.vbs`,
    `stop-bridge.cmd`, `stop-bridge-hidden.vbs`, for running the bridge headless
    from Task Scheduler.
 3. **Hardened `.gitignore`** — never commit `data/`, `plan-jwt.json`, `logs/`,
    binaries, or `*.bak-*` backups.
-4. **Responses API for Codex CLI** (wire format documented by
-   [TriDefender/zcode-api](https://github.com/TriDefender/zcode-api)):
-   `POST /v1/responses` accepts `model`, `input` (string or item array),
+4. **Responses API for Codex CLI**: `POST /v1/responses` accepts `model`, `input` (string or item array),
    `instructions`, `tools`, `tool_choice`, `max_output_tokens`, `temperature`,
    `top_p`, `stream`. The request is converted to the chat shape and then goes
    through the one Anthropic translation layer; `input[]` history (messages,
@@ -443,12 +472,10 @@ Changes made in this fork, relative to upstream `azrinaldi/zcode-bridge`:
    `output_item.done`, because Codex wedges a turn without them); no response is
    buffered. Non-streaming returns one `response` object with `output_text`,
    `output[]` and `usage`. Codex config:
-   `wire_api = "responses"`, `base_url = "http://127.0.0.1:20131/v1"`.
-   Files: `internal/models/responses.go`,
+   `wire_api = "responses"`, `base_url = "http://127.0.0.1:20135/v1"`
+   (`20131` when running the binary directly). Files: `internal/models/responses.go`,
    `internal/models/responses_stream.go`, `internal/server/responses.go`.
-5. **Built-in request inspector** (idea from
-   [TheHolyOneZ/ZProxy](https://github.com/TheHolyOneZ/ZProxy), but no MITM):
-   the bridge already terminates both legs, so it records the exchange it
+5. **Built-in request inspector**: the bridge already terminates both legs, so it records the exchange it
    forwards — method, path, route, model, serving account, request/response
    headers and bodies, status, upstream envelope code
    (3012/3008/3009/1113), duration, first-token latency and every upstream
@@ -463,9 +490,7 @@ Changes made in this fork, relative to upstream `azrinaldi/zcode-bridge`:
    set; `/dashboard` itself stays open. Files: `internal/capture`,
    `internal/server/inspect.go`, `internal/server/dashboard.go`,
    `internal/transport` (attempt hooks).
-6. **Usage and throughput metering** (presentation borrowed from
-   [Masterchiefm/zcode-speed-panel](https://github.com/Masterchiefm/zcode-speed-panel),
-   measurement redone): every request that reaches the upstream usage block is
+6. **Usage and throughput metering**: every request that reaches the upstream usage block is
    recorded with its model, serving account, input/output/cache-read tokens,
    first-token latency, generation time and tokens/second. Streaming requests
    measure from the first `content_block_delta` to `message_stop`; non-streaming
@@ -532,9 +557,7 @@ Changes made in this fork, relative to upstream `azrinaldi/zcode-bridge`:
    browser-side setting. Files: `internal/netmon`, `internal/server/routes.go`,
    `internal/server/dashboard.go`.
 
-11. **Idle/off-peak channel and plan claim** (behavior ported from
-    [TriDefender/zcode-api](https://github.com/TriDefender/zcode-api), source
-    not copied): `internal/offpeak` implements the ticket protocol
+11. **Idle/off-peak channel and plan claim**: `internal/offpeak` implements the ticket protocol
     (availability, take, batched status, settle) with retakes, a wait cap and
     SSE keepalives; `POST /async/v1/messages` and `/async/v1/chat/completions`
     bind a ready ticket to the request context, so the existing shaping,
@@ -544,13 +567,12 @@ Changes made in this fork, relative to upstream `azrinaldi/zcode-bridge`:
     marketing banner face, then claims the highest-priority one; a five-minute
     scheduler plus `zcode-bridge claim list|now` and `/v1/claim` expose it.
     Account/plan switching (`/v1/accounts`, `/v1/accounts/switch`) is the
-    dashboard counterpart of the reference's provider/plan selector. Files:
+    dashboard's provider/plan selector. Files:
     `internal/offpeak`, `internal/claim`, `internal/transport/offpeak.go`,
     `internal/server/async.go`, `internal/server/claim_api.go`,
     `internal/server/accounts_api.go`.
 
-12. **Inspector persistence, HAR export and replay** (remaining
-    [ZProxy](https://github.com/TheHolyOneZ/ZProxy) ideas): the redacted ring
+12. **Inspector persistence, HAR export and replay**: the redacted ring
     appends to `data/capture.jsonl` (newest 10k reloaded, file compacted past
     8MB), `GET /inspect?format=har` emits HAR 1.2, and
     `POST /inspect/replay?id=N` re-sends a captured request through the local
@@ -568,23 +590,6 @@ Changes made in this fork, relative to upstream `azrinaldi/zcode-bridge`:
     `docker-compose.yml`, `config.example.yaml`, and GitHub release checks
     (`internal/update`, `zcode-bridge update-check`, startup notice). Files:
     `internal/config`, `internal/update`.
-
-## Credits
-
-This fork is a combination of ideas from several public projects — the bridge
-base is [azrinaldi/zcode-bridge](https://github.com/azrinaldi/zcode-bridge), and
-the features above were ported (not vendored) from:
-
-| Project | What was taken |
-|---|---|
-| [TheHolyOneZ/ZProxy](https://github.com/TheHolyOneZ/ZProxy) | request/response inspector idea — re-done without MITM |
-| [TriDefender/zcode-api](https://github.com/TriDefender/zcode-api) | `POST /v1/responses` wire format for Codex CLI; idle/off-peak ticket channel, plan claim, provider/plan switch (behaviour re-implemented in Go) |
-| [Masterchiefm/zcode-speed-panel](https://github.com/Masterchiefm/zcode-speed-panel) | speed-panel presentation (rings, tiers, range charts, model trend, network/process cards, floating readout) — measurement replaced by real usage-block math and iphlpapi counter deltas |
-
-No code is copied from those projects; everything is implemented in Go with the
-standard library only. `TriDefender/zcode-api` is licensed CC BY-NC-SA 4.0;
-this fork uses only its observable protocol behaviour, not its source, and
-stays MIT for the original and independently written parts.
 
 ## License
 

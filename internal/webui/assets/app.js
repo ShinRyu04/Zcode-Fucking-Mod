@@ -19,6 +19,18 @@ const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
 function esc(v) {
   return String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch (e) {
+    const t = document.createElement('textarea');
+    t.value = text; t.style.position = 'fixed'; t.style.opacity = '0';
+    document.body.appendChild(t); t.select();
+    try { document.execCommand('copy'); } catch (_) {}
+    t.remove();
+  }
+  toast('Disalin', 'ok');
+}
 function fmtN(n) {
   n = Number(n) || 0;
   if (n >= 1e9) return (n / 1e9).toFixed(2) + ' B';
@@ -82,7 +94,7 @@ ZB.api = api;
 function route() {
   let hash = location.hash.replace(/^#\/?/, '').split('?')[0];
   if (!hash) hash = location.pathname === '/chat' ? 'chat' : 'overview';
-  if (!['overview', 'chat', 'inspector', 'usage', 'network', 'claim', 'settings'].includes(hash)) hash = 'overview';
+  if (!['overview', 'accounts', 'chat', 'inspector', 'usage', 'network', 'claim', 'settings'].includes(hash)) hash = 'overview';
   ZB.page = hash;
   $$('#nav a').forEach(a => a.classList.toggle('active', a.dataset.page === hash));
   document.body.classList.toggle('navopen', false);
@@ -91,7 +103,7 @@ function route() {
   view.innerHTML = '';
   if (hash === 'chat' && window.ZChat) window.ZChat.mount(view);
   else if (hash === 'chat') view.innerHTML = '<div class="empty">Memuat chat…</div>';
-  else ({ overview: pageOverview, inspector: pageInspector, usage: pageUsage, network: pageNetwork, claim: pageClaim, settings: pageSettings })[hash](view);
+  else ({ overview: pageOverview, accounts: pageAccounts, inspector: pageInspector, usage: pageUsage, network: pageNetwork, claim: pageClaim, settings: pageSettings })[hash](view);
   view.scrollTop = 0;
 }
 window.addEventListener('hashchange', route);
@@ -190,23 +202,131 @@ function patchSideStats() {
   if (n) { const e = $('#sidenet'); if (e) e.textContent = '↓' + fmtBps(n.total_in_bps) + ' ↑' + fmtBps(n.total_out_bps); }
 }
 
+let accountFlow = null, accountTimer = null;
+
+function accountBadges(a) {
+  const out = [];
+  if (a.default) out.push('<span class="badge ok">aktif</span>');
+  if (a.expired) out.push('<span class="badge bad">kedaluwarsa</span>');
+  if (a.needsReauth) out.push('<span class="badge bad">perlu login</span>');
+  if (a.cooldownUntil) out.push('<span class="badge warn">jeda</span>');
+  if (a.hasRefresh) out.push('<span class="badge">refresh</span>');
+  return out.join('') || '<span class="badge">siap</span>';
+}
+
 function renderAccountCard() {
-  const h = ZB.health || {};
-  const accounts = h.accounts || [];
-  const box = $('#ov-accounts');
+  const accounts = (ZB.health && ZB.health.accounts) || [];
+  const box = $('#acc-page') || $('#ov-accounts');
   if (!box) return;
-  if (!accounts.length) { box.innerHTML = '<h2>Akun</h2><div class="empty">Tidak ada akun tersimpan.</div>'; return; }
-  box.innerHTML = '<h2>Akun <span class="muted">ring plan lokal</span></h2><div class="kv acct-kv">' +
-    accounts.map(a => `<dt>${esc(a.label || a.id)}</dt><dd>${a.active || a.default ? '<span class="badge ok">aktif</span>' : (a.needsReauth ? '<span class="badge bad">reauth</span>' : '<span class="badge">siap</span>')}</dd>`).join('') +
-    '</div>' +
-    `<div class="row" style="margin-top:10px"><select id="ov-accsel" class="grow">${accounts.map(a => `<option value="${esc(a.id)}">${esc(a.label || a.id)}</option>`).join('')}</select><button class="btn" id="ov-accbtn" type="button">Terapkan</button></div>`;
-  $('#ov-accbtn').onclick = async () => {
+  box.innerHTML = '<h2>Akun <span class="muted">ring plan lokal</span></h2>' +
+    (accounts.length ? '<div class="acct-list">' + accounts.map(a => `
+      <div class="acct-row">
+        <div class="acct-main"><b>${esc(a.label || a.id)}</b><span class="small muted mono">${esc(a.id)}${a.email ? ' · ' + esc(a.email) : ''}</span>
+          <span class="small muted">${a.expiresAt ? 'berakhir ' + when(a.expiresAt) : 'tanpa masa aktif'}</span></div>
+        <div class="acct-badges">${accountBadges(a)}</div>
+        <div class="acct-act">${a.default ? '' : `<button class="btn ghost sm" data-acc-use="${esc(a.id)}" type="button">Aktifkan</button>`}<button class="btn ghost sm danger" data-acc-del="${esc(a.id)}" data-acc-label="${esc(a.label || a.id)}" type="button">Hapus</button></div>
+      </div>`).join('') + '</div>'
+      : '<div class="empty">Belum ada akun tersimpan. Hubungkan akun Z.ai pertama.</div>') +
+    `<form id="acc-add" class="row" style="margin-top:10px"><input id="acc-label" class="grow" maxlength="40" placeholder="Label akun baru (mis. kerja)" autocomplete="off"><button class="btn" id="acc-addbtn" type="submit">Hubungkan akun</button></form>` +
+    '<div id="acc-flow"></div>';
+
+  box.querySelectorAll('[data-acc-use]').forEach(btn => {
+    btn.onclick = async () => {
+      btn.disabled = true;
+      try {
+        await api('/v1/accounts/switch', { method: 'POST', body: JSON.stringify({ id: btn.dataset.accUse }) });
+        toast('Akun aktif diganti', 'ok');
+        await refreshHealth();
+      } catch (e) { toast(e.message, 'bad'); btn.disabled = false; }
+    };
+  });
+  box.querySelectorAll('[data-acc-del]').forEach(btn => {
+    btn.onclick = async () => {
+      if (!confirm('Hapus akun ' + btn.dataset.accLabel + '? Token plan ikut dihapus dari penyimpanan lokal.')) return;
+      btn.disabled = true;
+      try {
+        await api('/v1/accounts/remove', { method: 'POST', body: JSON.stringify({ id: btn.dataset.accDel }) });
+        toast('Akun dihapus', 'ok');
+        await refreshHealth();
+      } catch (e) { toast(e.message, 'bad'); btn.disabled = false; }
+    };
+  });
+  const form = $('#acc-add');
+  if (form) form.onsubmit = async ev => {
+    ev.preventDefault();
+    const label = ($('#acc-label').value || '').trim();
+    const addBtn = $('#acc-addbtn');
+    addBtn.disabled = true;
     try {
-      await api('/v1/accounts/switch', { method: 'POST', body: JSON.stringify({ id: $('#ov-accsel').value }) });
-      toast('Akun aktif diganti', 'ok');
-      await refreshHealth();
-    } catch (e) { toast(e.message, 'bad'); }
+      const r = await api('/v1/accounts/login', { method: 'POST', body: JSON.stringify({ label }) });
+      accountFlow = { id: r.flow_id, url: r.authorize_url, status: 'pending', error: '' };
+      renderAccountFlow();
+      const wait = Math.max(1200, Number(r.poll_interval_ms) || 2000);
+      accountTimer = setInterval(pollAccountLogin, wait);
+      pollAccountLogin();
+    } catch (e) {
+      toast(e.message, 'bad');
+      addBtn.disabled = false;
+    }
   };
+  renderAccountFlow();
+}
+
+function pageAccounts(view) {
+  view.innerHTML = skeleton('Akun', 'Ring plan lokal: koneksi, akun aktif, dan masa berlaku.') +
+    '<div class="card" id="acc-page"><div class="empty">Memuat...</div></div>';
+  renderAccountCard();
+  refreshHealth();
+}
+
+function renderAccountFlow() {
+  const el = $('#acc-flow');
+  if (!el) return;
+  if (!accountFlow) { el.innerHTML = ''; return; }
+  if (accountFlow.status === 'pending') {
+    el.innerHTML = `<div class="flow"><div class="small muted">Setujui tautan ini di browser yang sudah login ke Z.ai:</div>
+      <div class="row" style="margin-top:6px"><a class="btn sm" href="${esc(accountFlow.url)}" target="_blank" rel="noopener">Buka halaman izin</a><button class="btn ghost sm" id="accflow-copy" type="button">Salin tautan</button><button class="btn ghost sm" id="accflow-cancel" type="button">Batal</button></div>
+      <div class="small muted" id="accflow-stat" style="margin-top:6px">Menunggu persetujuan...</div></div>`;
+    const copy = $('#accflow-copy');
+    if (copy) copy.onclick = () => copyText(accountFlow.url);
+    const cancel = $('#accflow-cancel');
+    if (cancel) cancel.onclick = cancelAccountLogin;
+  } else {
+    el.innerHTML = `<div class="flow"><div class="small ${accountFlow.status === 'ok' ? 'muted' : 'danger'}">${esc(accountFlow.error || (accountFlow.status === 'ok' ? 'Akun terhubung.' : 'Login dibatalkan.'))}</div><div class="row" style="margin-top:6px"><button class="btn ghost sm" id="accflow-close" type="button">Tutup</button></div></div>`;
+    const close = $('#accflow-close');
+    if (close) close.onclick = () => { accountFlow = null; renderAccountFlow(); };
+  }
+}
+
+async function pollAccountLogin() {
+  if (!accountFlow || accountFlow.status !== 'pending') return;
+  try {
+    const s = await api('/v1/accounts/login/status?flow_id=' + encodeURIComponent(accountFlow.id));
+    if (s.status === 'ok') {
+      clearInterval(accountTimer); accountTimer = null;
+      accountFlow = { status: 'ok', error: '' };
+      renderAccountFlow();
+      toast('Akun berhasil terhubung', 'ok');
+      await refreshHealth();
+    } else if (s.status === 'error' || s.status === 'cancelled') {
+      clearInterval(accountTimer); accountTimer = null;
+      accountFlow = { status: s.status, error: s.error || 'Login gagal.' };
+      renderAccountFlow();
+      const addBtn = $('#acc-addbtn'); if (addBtn) addBtn.disabled = false;
+    }
+  } catch (e) {
+    accountFlow.error = e.message;
+    const stat = $('#accflow-stat'); if (stat) stat.textContent = e.message;
+  }
+}
+
+async function cancelAccountLogin() {
+  if (!accountFlow) return;
+  clearInterval(accountTimer); accountTimer = null;
+  try { await api('/v1/accounts/login/cancel', { method: 'POST', body: JSON.stringify({ flow_id: accountFlow.id }) }); } catch (e) {}
+  accountFlow = { status: 'cancelled', error: 'Login dibatalkan.' };
+  renderAccountFlow();
+  const addBtn = $('#acc-addbtn'); if (addBtn) addBtn.disabled = false;
 }
 
 async function loadOverviewExtras() {
@@ -530,6 +650,9 @@ async function pageSettings(view) {
       <div class="row"><span class="small muted">Tema</span><span class="spacer"></span><button class="btn ghost sm" id="settheme" type="button">Ganti tema</button></div>
     </div>
   </div>
+  <div class="card" style="margin-top:14px"><h2>Integrasi agen <span class="muted">OpenAI compatible</span></h2>
+    <div id="intbody"><div class="empty">Memuat...</div></div>
+  </div>
   <div class="card" style="margin-top:14px"><h2>Environment</h2><div id="setenv"></div></div>
   <div class="card" style="margin-top:14px"><h2>Data & alat</h2>
     <div class="row"><a class="btn ghost sm" href="/classic" target="_blank" rel="noopener">Dashboard klasik</a><a class="btn ghost sm" href="/overlay" target="_blank" rel="noopener">Overlay</a><a class="btn ghost sm" href="/health" target="_blank" rel="noopener">/health</a><a class="btn ghost sm" href="/v1/models" target="_blank" rel="noopener">/v1/models</a></div>
@@ -553,6 +676,69 @@ async function pageSettings(view) {
     $('#setbridge').innerHTML = `<div class="empty">${esc(e.message)}</div>`;
     $('#setenv').innerHTML = `<div class="empty">${esc(e.message)}</div>`;
   }
+  loadIntegration();
+}
+
+function integrationCurl(s) {
+  const key = s.key || '<kunci-api>';
+  const body = JSON.stringify({ model: s.default_model, messages: [{ role: 'user', content: 'Halo' }], stream: true });
+  return `curl ${s.endpoints.chat} \\\n  -H "Authorization: Bearer ${key}" \\\n  -H "Content-Type: application/json" \\\n  -d '${body}'`;
+}
+
+async function loadIntegration() {
+  const box = $('#intbody');
+  if (!box) return;
+  box.innerHTML = '<div class="empty">Memuat...</div>';
+  try {
+    const s = await api('/v1/integration');
+    const curl = integrationCurl(s);
+    const source = s.key_source === 'env' ? 'dari env ZCODE_BRIDGE_TOKEN (hanya baca)' : (s.key_source === 'file' ? 'tersimpan di data/agent-key.json' : 'belum di-set, bridge terbuka di loopback');
+    box.innerHTML = `
+      <label class="field"><span>Kunci API (Bearer hilir)</span>
+        <div class="row"><input id="intkey" class="grow mono" readonly value="${esc(s.key || '')}" placeholder="belum di-set"><button class="btn ghost sm" id="intcopy" type="button">Salin</button></div>
+      </label>
+      <p class="small muted" style="margin:8px 0">${esc(s.masked_key ? 'Tampilan: ' + s.masked_key + ' - ' : '')}${esc(source)}</p>
+      <label class="field"><span>Base URL</span>
+        <div class="row"><input id="intbase" class="grow mono" readonly value="${esc(s.base_url)}"><button class="btn ghost sm" id="intcopybase" type="button">Salin</button></div>
+      </label>
+      <div class="row" style="margin-top:10px"><span class="small muted">Model default ${esc(s.default_model)}</span><span class="spacer"></span>
+        <button class="btn ghost sm" id="introtate" type="button">${s.key_present ? 'Ganti kunci' : 'Buat kunci'}</button>
+        <button class="btn ghost sm danger" id="intdelete" type="button" ${s.key_present && s.editable ? '' : 'disabled'}>Hapus</button>
+      </div>
+      <div class="row" style="margin:14px 0 6px"><span class="small muted">Contoh permintaan</span><span class="spacer"></span><button class="btn ghost sm" id="intcurlcopy" type="button">Salin contoh</button></div>
+      <pre class="snippet" id="intcurl">${esc(curl)}</pre>
+      <p class="small muted" style="margin-top:8px">Klien lain memakai kunci ini sebagai <span class="mono">Authorization: Bearer</span>. Kunci env tidak bisa diubah dari dashboard.</p>`;
+    $('#intcopy').onclick = () => copyText(s.key || '');
+    $('#intcopybase').onclick = () => copyText(s.base_url);
+    $('#intcurlcopy').onclick = () => copyText(curl);
+    const rotate = $('#introtate');
+    rotate.disabled = !s.editable;
+    rotate.onclick = async () => {
+      if (s.key_present && !confirm('Ganti kunci? Klien yang memakai kunci lama langsung ditolak.')) return;
+      rotate.disabled = true;
+      try {
+        const r = await api('/v1/integration/key', { method: 'POST' });
+        ZB.token = r.key;
+        sessionStorage.setItem('zbToken', r.key);
+        toast('Kunci baru dibuat dan dipakai tab ini', 'ok');
+        connectSSE(); refreshHealth(); loadIntegration();
+      } catch (e) { toast(e.message, 'bad'); rotate.disabled = false; }
+    };
+    const del = $('#intdelete');
+    if (del) del.onclick = async () => {
+      if (!confirm('Hapus kunci? Setelah ini bridge terbuka untuk siapa pun di loopback.')) return;
+      del.disabled = true;
+      try {
+        await api('/v1/integration/key', { method: 'DELETE' });
+        ZB.token = '';
+        sessionStorage.removeItem('zbToken');
+        toast('Kunci dihapus', 'ok');
+        connectSSE(); refreshHealth(); loadIntegration();
+      } catch (e) { toast(e.message, 'bad'); del.disabled = false; }
+    };
+  } catch (e) {
+    box.innerHTML = `<div class="empty">${esc(e.message)}</div>`;
+  }
 }
 
 /* ---------------- live ---------------- */
@@ -562,7 +748,7 @@ async function refreshHealth() {
   const dot = $('#livedot'); if (dot) dot.classList.add('live');
   const lane = $('#toplane'); if (lane) lane.textContent = h.lane || 'lane';
   const sub = $('#brandsub'); if (sub) sub.textContent = h.auth || '';
-  if (ZB.page === 'overview') { patchOverview(); renderAccountCard(); }
+  if (ZB.page === 'overview' || ZB.page === 'accounts') { patchOverview(); renderAccountCard(); }
 }
 
 function connectSSE() {

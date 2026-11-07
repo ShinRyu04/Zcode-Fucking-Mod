@@ -220,27 +220,13 @@ func deviceLogin(label string) {
 	fmt.Printf("Approve this URL in a browser where you are signed in to Z.ai (%d min limit):\n\n  %s\n\nWaiting for approval...\n",
 		minutes, flow.AuthorizeURL)
 
-	result, err := auth.PollDeviceFlow(ctx, flow)
+	result, err := accounts.CompleteDeviceFlow(ctx, flow, label)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "login failed: %v\n", err)
 		os.Exit(1)
 	}
-	claims, _ := auth.DecodeJWT(result.JWT)
-	var expiresAt int64
-	if e, ok := claims["exp"].(float64); ok {
-		expiresAt = int64(e) * 1000
-	}
-	// A plan JWT without exp never expires (auth.IsExpired treats it that way),
-	// so leave expiresAt at 0. Stamping now+24h made accounts.Usable drop a
-	// perfectly good account one day after login.
-	userID, _ := claims["user_id"].(string)
-	if userID == "" {
-		userID, _ = claims["sub"].(string)
-	}
-	// Upsert derives the stable account id from the JWT's user_id.
-	tmp := accounts.Upsert("", label, result.JWT, result.RefreshToken, result.AccessToken, expiresAt)
 	fmt.Printf("\nAuthorized. account %s (user %s) stored in %s\n",
-		tmp.ID, orUnknown(userID), accounts.AccountsFile())
+		result.ID, orUnknown(result.UserID), accounts.AccountsFile())
 	if result.RefreshToken != "" {
 		fmt.Println("refresh token stored; the bridge will try it on auth expiry (best effort).")
 	} else {

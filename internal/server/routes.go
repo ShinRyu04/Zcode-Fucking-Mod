@@ -98,6 +98,34 @@ func route(w http.ResponseWriter, r *http.Request) {
 		if requireObservabilityToken(w, r) {
 			handleAccountSwitch(w, r)
 		}
+	case r.Method == http.MethodPost && pathName == "/v1/accounts/remove":
+		if requireObservabilityToken(w, r) {
+			handleAccountRemove(w, r)
+		}
+	case r.Method == http.MethodPost && pathName == "/v1/accounts/login":
+		if requireObservabilityToken(w, r) {
+			handleAccountLoginStart(w, r)
+		}
+	case r.Method == http.MethodGet && pathName == "/v1/accounts/login/status":
+		if requireObservabilityToken(w, r) {
+			handleAccountLoginStatus(w, r)
+		}
+	case r.Method == http.MethodPost && pathName == "/v1/accounts/login/cancel":
+		if requireObservabilityToken(w, r) {
+			handleAccountLoginCancel(w, r)
+		}
+	case r.Method == http.MethodGet && pathName == "/v1/integration":
+		if requireObservabilityToken(w, r) {
+			handleIntegration(w, r)
+		}
+	case r.Method == http.MethodPost && pathName == "/v1/integration/key":
+		if requireObservabilityToken(w, r) {
+			handleIntegrationKey(w, r)
+		}
+	case r.Method == http.MethodDelete && pathName == "/v1/integration/key":
+		if requireObservabilityToken(w, r) {
+			handleIntegrationKeyDelete(w, r)
+		}
 	case r.Method == http.MethodGet && pathName == "/v1/usage":
 		if requireObservabilityToken(w, r) {
 			handleUsage(w, r)
@@ -209,7 +237,7 @@ func healthPayload() map[string]any {
 		planJwt = entry
 	}
 	authMode := "open (localhost)"
-	if cfg.BridgeToken != "" {
+	if effectiveBridgeToken() != "" {
 		authMode = "bridge token required"
 	}
 	return map[string]any{
