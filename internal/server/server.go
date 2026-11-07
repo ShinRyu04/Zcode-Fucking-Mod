@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/azrinaldi/zcode-bridge/internal/accounts"
+	"github.com/azrinaldi/zcode-bridge/internal/capture"
 	"github.com/azrinaldi/zcode-bridge/internal/models"
 	"github.com/azrinaldi/zcode-bridge/internal/quota"
 	"github.com/azrinaldi/zcode-bridge/internal/transport"
@@ -197,19 +198,24 @@ func handleMessagesInner(w http.ResponseWriter, r *http.Request, body map[string
 	stream, _ := body["stream"].(bool)
 	payload := body
 	payload["model"] = models.NormalizeModel(stringOf(body["model"]))
+	rec := capture.FromContext(r.Context())
+	rec.NoteModel(stringOf(payload["model"]))
+	rec.NoteStream(stream)
 	upstream, err := transport.SendAnthropic(transport.SendOpts{
 		Body:            payload,
 		AccountID:       accountID,
 		ClientSessionID: SessionKeyFor(r, body),
 		Context:         r.Context(),
+		Hooks:           captureHooks(rec),
 	})
 	if err != nil {
+		rec.NoteError(upstreamCode(err))
 		relayUpstreamError(w, err, "anthropic")
 		return
 	}
 	defer upstream.Body.Close()
 	if stream {
-		pipeStream(w, upstream, "anthropic", stringOf(payload["model"]))
+		pipeStream(w, upstream, "anthropic", stringOf(payload["model"]), rec)
 		return
 	}
 	raw, err := io.ReadAll(io.LimitReader(upstream.Body, 32<<20))
@@ -236,19 +242,24 @@ func handleChatCompletionsInner(w http.ResponseWriter, r *http.Request, body map
 	body["model"] = models.NormalizeModel(stringOf(body["model"]))
 	translated := models.OpenAIToAnthropic(body)
 	model := stringOf(translated["model"])
+	rec := capture.FromContext(r.Context())
+	rec.NoteModel(model)
+	rec.NoteStream(stream)
 	upstream, err := transport.SendAnthropic(transport.SendOpts{
 		Body:            translated,
 		AccountID:       accountID,
 		ClientSessionID: SessionKeyFor(r, body),
 		Context:         r.Context(),
+		Hooks:           captureHooks(rec),
 	})
 	if err != nil {
+		rec.NoteError(upstreamCode(err))
 		relayUpstreamError(w, err, "openai")
 		return
 	}
 	defer upstream.Body.Close()
 	if stream {
-		pipeStream(w, upstream, "openai", model)
+		pipeStream(w, upstream, "openai", model, rec)
 		return
 	}
 	raw, err := io.ReadAll(io.LimitReader(upstream.Body, 32<<20))
@@ -269,6 +280,42 @@ func stringOf(v any) string {
 	return s
 }
 
+// captureHooks turns transport attempts into inspector events and records the
+// account that actually served the request.
+func captureHooks(rec *capture.Recorder) *transport.Hooks {
+	if rec == nil {
+		return nil
+	}
+	return &transport.Hooks{Attempt: func(ev transport.AttemptEvent) {
+		account := firstNonEmpty(ev.AccountID, ev.Label)
+		detail := ""
+		if ev.Err != nil {
+			detail = ev.Err.Error()
+		}
+		rec.NoteAttempt(capture.Event{
+			Kind:       "attempt",
+			Account:    account,
+			Attempt:    ev.Attempt,
+			Status:     ev.Status,
+			Code:       ev.Code,
+			Switchable: ev.Switchable,
+			Detail:     detail,
+			DurationMS: ev.Duration.Milliseconds(),
+		})
+		if ev.Served {
+			rec.NoteAccount(account)
+		}
+	}}
+}
+
+// upstreamCode extracts the gateway envelope code for the inspector filter.
+func upstreamCode(err error) any {
+	if ue, ok := err.(*transport.UpstreamError); ok {
+		return ue.Code
+	}
+	return nil
+}
+
 func isJSON(raw []byte) bool {
 	var m any
 	return json.Unmarshal(raw, &m) == nil
@@ -277,7 +324,7 @@ func isJSON(raw []byte) bool {
 // pipeStream streams upstream SSE frames to the caller. Anthropic frames
 // pass through untouched; OpenAI callers get frames rewritten into
 // chat.completion.chunk.
-func pipeStream(w http.ResponseWriter, upstream *http.Response, dialect, model string) {
+func pipeStream(w http.ResponseWriter, upstream *http.Response, dialect, model string, rec *capture.Recorder) {
 	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache, no-transform")
 	w.Header().Set("Connection", "keep-alive")
@@ -303,7 +350,11 @@ func pipeStream(w http.ResponseWriter, upstream *http.Response, dialect, model s
 	for {
 		n, err := reader.Read(buf)
 		if n > 0 {
-			carry += string(buf[:n])
+			chunk := string(buf[:n])
+			if strings.Contains(chunk, "content_block_delta") {
+				rec.NoteFirstToken()
+			}
+			carry += chunk
 			if dialect != "openai" {
 				if !writeSSE(string(buf[:n])) {
 					return

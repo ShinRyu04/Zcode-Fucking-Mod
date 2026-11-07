@@ -33,9 +33,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
-	"os"
 	"sync"
 	"time"
 
@@ -291,6 +291,32 @@ func WithLane(ctx context.Context, fn func() error) error {
 	}
 }
 
+// AttemptEvent describes one upstream attempt. The server's capture and usage
+// layers consume it; nothing else depends on it.
+type AttemptEvent struct {
+	AccountID  string
+	Label      string
+	Attempt    int
+	Status     int
+	Code       any
+	Err        error
+	Switchable bool // the account's turn is over: rotation will happen
+	Served     bool // this attempt's response went back to the client
+	Duration   time.Duration
+}
+
+// Hooks observes one request's upstream attempts. Nil fields are skipped, so
+// a nil *Hooks is a valid no-op.
+type Hooks struct {
+	Attempt func(AttemptEvent)
+}
+
+func (h *Hooks) attempt(ev AttemptEvent) {
+	if h != nil && h.Attempt != nil {
+		h.Attempt(ev)
+	}
+}
+
 // SendOpts carries one upstream call's parameters.
 type SendOpts struct {
 	Body            map[string]any // Anthropic-format request
@@ -298,6 +324,7 @@ type SendOpts struct {
 	AccountID       string         // pin to one stored account
 	ClientSessionID string         // conversation affinity key
 	Context         context.Context
+	Hooks           *Hooks // optional observer (capture, usage)
 	HTTP            *http.Client
 	UpstreamTimeout time.Duration // hard deadline (0: 5m)
 }
@@ -405,8 +432,13 @@ func runAccount(ctx context.Context, client *http.Client, acct candidate, o Send
 	refreshed := false
 	var lastErr *UpstreamError
 	for n := 0; n < maxAttempts; n++ {
+		started := time.Now()
 		res, attemptErr := attemptOnce(ctx, client, acct, bearer, o, timeout)
 		if res != nil && res.StatusCode >= 200 && res.StatusCode < 300 {
+			o.Hooks.attempt(AttemptEvent{
+				AccountID: acct.ID, Label: acct.Label, Attempt: n + 1,
+				Status: res.StatusCode, Served: true, Duration: time.Since(started),
+			})
 			return res, nil
 		}
 		if attemptErr != nil {
@@ -427,6 +459,11 @@ func runAccount(ctx context.Context, client *http.Client, acct candidate, o Send
 				lastErr.AccountSwitch = true
 			}
 		}
+		o.Hooks.attempt(AttemptEvent{
+			AccountID: acct.ID, Label: acct.Label, Attempt: n + 1,
+			Status: lastErr.Status, Code: lastErr.Code, Err: lastErr,
+			Switchable: lastErr.AccountSwitch, Duration: time.Since(started),
+		})
 		// 401 handling: a stored account gets one best-effort refresh; the
 		// legacy token re-reads its sources (the desktop app may have
 		// rotated the JWT underneath us). Either way the retry does not

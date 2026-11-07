@@ -22,6 +22,7 @@ import (
 
 	"github.com/azrinaldi/zcode-bridge/internal/accounts"
 	"github.com/azrinaldi/zcode-bridge/internal/auth"
+	"github.com/azrinaldi/zcode-bridge/internal/capture"
 	"github.com/azrinaldi/zcode-bridge/internal/systemprompt"
 	"github.com/azrinaldi/zcode-bridge/internal/transport"
 )
@@ -255,6 +256,7 @@ func setupBridge(t *testing.T) {
 		os.Setenv("ZCODE_ACCOUNTS_FILE", accountsFile)
 		accounts.ResetForTest()
 		Configure(Config{Port: 0, Host: "127.0.0.1", BridgeToken: "", ModelsCache: 100 * time.Millisecond})
+		capture.EnableForTest(50, 1<<14)
 		bridge = httptest.NewServer(Route())
 	})
 }
@@ -317,7 +319,8 @@ func TestDashboardServesStatusPage(t *testing.T) {
 		t.Fatal(err)
 	}
 	page := string(raw)
-	for _, want := range []string{"zcode-bridge", "/health", "/quota", "id=\"health\"", "id=\"quota\""} {
+	for _, want := range []string{"zcode-bridge", "/health", "/quota", "id=\"health\"", "id=\"quota\"",
+		"Inspector", "id=\"panel-inspector\"", "/inspect?limit=200"} {
 		if !strings.Contains(page, want) {
 			t.Fatalf("dashboard page missing %q", want)
 		}
@@ -717,5 +720,108 @@ func TestAccountPinnedSkipsRotation(t *testing.T) {
 	status, _, _ := doRequest(t, "POST", "/v1/chat/completions?account=spent", map[string]any{"model": "glm-5.3-flash", "messages": []any{map[string]any{"role": "user", "content": "pinned"}}})
 	if status != 429 {
 		t.Fatalf("spent account answers its own error when pinned: %d", status)
+	}
+}
+
+func TestInspectCapturesExchange(t *testing.T) {
+	setupBridge(t)
+	resetSeen()
+	capture.Clear()
+	status, text, _ := doRequest(t, "POST", "/v1/chat/completions", map[string]any{
+		"model": "glm-5.3-flash", "messages": []any{map[string]any{"role": "user", "content": "capture me"}},
+	})
+	if status != 200 {
+		t.Fatalf("chat status %d: %s", status, text)
+	}
+	code, raw, body := doRequest(t, "GET", "/inspect?limit=10", nil)
+	if code != 200 {
+		t.Fatalf("inspect status %d: %s", code, raw)
+	}
+	if body["enabled"] != true {
+		t.Fatalf("inspect enabled = %v", body["enabled"])
+	}
+	entries := body["entries"].([]any)
+	if len(entries) != 1 {
+		t.Fatalf("entries = %d", len(entries))
+	}
+	entry := entries[0].(map[string]any)
+	if str(entry["route"]) != "chat.completions" || entry["status"].(float64) != 200 {
+		t.Fatalf("summary = %v", entry)
+	}
+	if str(entry["model"]) != "glm-5.3-flash" {
+		t.Fatalf("model = %v", entry["model"])
+	}
+	if str(entry["account"]) == "" {
+		t.Fatalf("account attribution missing: %v", entry)
+	}
+	if _, hasBody := entry["request_body"]; hasBody {
+		t.Fatal("the listing must not carry bodies")
+	}
+	id := int64(entry["id"].(float64))
+	code, raw, detail := doRequest(t, "GET", "/inspect?id="+fmt.Sprint(id), nil)
+	if code != 200 {
+		t.Fatalf("detail status %d: %s", code, raw)
+	}
+	if !strings.Contains(str(detail["request_body"]), "capture me") {
+		t.Fatalf("request body = %q", detail["request_body"])
+	}
+	if !strings.Contains(str(detail["response_body"]), "STUB-OK") {
+		t.Fatalf("response body = %q", detail["response_body"])
+	}
+	events, _ := detail["events"].([]any)
+	if len(events) == 0 {
+		t.Fatal("upstream attempt not recorded")
+	}
+	if code, _, _ := doRequest(t, "GET", "/inspect?id=99999", nil); code != 404 {
+		t.Fatalf("unknown id status = %d", code)
+	}
+}
+
+func TestInspectCapturesStreamFlags(t *testing.T) {
+	setupBridge(t)
+	resetSeen()
+	capture.Clear()
+	req, _ := http.NewRequest("POST", bridgeURL()+"/v1/chat/completions", bytes.NewReader([]byte(
+		`{"model":"glm-5.3-flash","stream":true,"messages":[{"role":"user","content":"stream"}]}`)))
+	req.Header.Set("Content-Type", "application/json")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = io.Copy(io.Discard, res.Body)
+	res.Body.Close()
+
+	_, _, body := doRequest(t, "GET", "/inspect?limit=5", nil)
+	entries := body["entries"].([]any)
+	if len(entries) != 1 {
+		t.Fatalf("entries = %d", len(entries))
+	}
+	entry := entries[0].(map[string]any)
+	if entry["stream"] != true {
+		t.Fatalf("stream flag = %v", entry["stream"])
+	}
+	if str(entry["path"]) != "/v1/chat/completions" {
+		t.Fatalf("path = %v", entry["path"])
+	}
+}
+
+func TestInspectTokenGate(t *testing.T) {
+	setupBridge(t)
+	previous := cfg.BridgeToken
+	cfg.BridgeToken = "inspect-token"
+	defer func() { cfg.BridgeToken = previous }()
+
+	if code, _, _ := doRequest(t, "GET", "/inspect", nil); code != 401 {
+		t.Fatalf("unauthenticated inspect = %d", code)
+	}
+	req, _ := http.NewRequest("GET", bridgeURL()+"/inspect", nil)
+	req.Header.Set("Authorization", "Bearer inspect-token")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != 200 {
+		t.Fatalf("authenticated inspect = %d", res.StatusCode)
 	}
 }

@@ -11,6 +11,7 @@ import (
 
 	"github.com/azrinaldi/zcode-bridge/internal/accounts"
 	"github.com/azrinaldi/zcode-bridge/internal/auth"
+	"github.com/azrinaldi/zcode-bridge/internal/capture"
 	"github.com/azrinaldi/zcode-bridge/internal/identity"
 	"github.com/azrinaldi/zcode-bridge/internal/quota"
 	"github.com/azrinaldi/zcode-bridge/internal/transport"
@@ -45,6 +46,14 @@ func route(w http.ResponseWriter, r *http.Request) {
 		handleQuota(w, r, accountID)
 	case r.Method == http.MethodGet && pathName == "/dashboard":
 		handleDashboard(w)
+	case r.Method == http.MethodGet && (pathName == "/inspect" || pathName == "/inspector"):
+		if requireObservabilityToken(w, r) {
+			handleInspect(w, r)
+		}
+	case r.Method == http.MethodDelete && pathName == "/inspect":
+		if requireObservabilityToken(w, r) {
+			handleInspectClear(w)
+		}
 	case r.Method == http.MethodPost && pathName == "/v1/messages":
 		requireAuth(w, r, "anthropic", func() {
 			handlePost(w, r, accountID, handleMessages)
@@ -60,6 +69,17 @@ func route(w http.ResponseWriter, r *http.Request) {
 
 // requireAuth gates inference routes; read-only observability routes stay
 // open so localhost dashboards work without the token.
+// requireObservabilityToken gates routes that expose captured traffic or usage
+// aggregates: ZCODE_BRIDGE_TOKEN when set, otherwise open on loopback (same
+// rule the /dashboard page itself follows).
+func requireObservabilityToken(w http.ResponseWriter, r *http.Request) bool {
+	if authorized(r) {
+		return true
+	}
+	sendJSON(w, 401, map[string]any{"ok": false, "error": "invalid bridge token"})
+	return false
+}
+
 func requireAuth(w http.ResponseWriter, r *http.Request, dialect string, next func()) {
 	if !authorized(r) {
 		if dialect == "openai" {
@@ -86,6 +106,14 @@ func handlePost(w http.ResponseWriter, r *http.Request, accountID string, handle
 	if !ok {
 		anthropicError(w, 400, "Invalid JSON body", "invalid_request_error")
 		return
+	}
+	// Capture wraps the writer before the handler runs, so the inspector sees
+	// the real response (status, headers, truncated body) without buffering:
+	// streaming writers still forward every byte as it arrives.
+	if rec := capture.Begin(r, raw); rec != nil {
+		w = rec.Wrap(w)
+		r = r.WithContext(capture.WithRecorder(r.Context(), rec))
+		defer rec.Finish()
 	}
 	handler(w, r, body, accountID)
 }
@@ -192,4 +220,3 @@ func ListenAndServe() error {
 	}
 	return srv.ListenAndServe()
 }
-

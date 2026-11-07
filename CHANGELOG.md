@@ -18,6 +18,15 @@ versions follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Request inspector: opt-in capture ring (`ZCODE_CAPTURE=1`,
+  `ZCODE_CAPTURE_SIZE`, `ZCODE_CAPTURE_BODY_MAX`) recording every inference
+  exchange with account attribution, upstream attempt/rotation events,
+  duration and first-token latency; `GET /inspect` (list, detail by `id`,
+  `full=1` export) and `DELETE /inspect`; dashboard "Inspector" tab with
+  method/status filters, path search and a detail panel. Secrets are
+  redacted before storage; the endpoints honour `ZCODE_BRIDGE_TOKEN`.
+
 ## [0.1.0] - 2026-11-01
 
 First public release.

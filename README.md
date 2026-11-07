@@ -85,7 +85,11 @@ curl -s http://127.0.0.1:20131/v1/chat/completions \
 | `POST /v1/chat/completions` | OpenAI | translated both ways, incl. streaming + tools |
 | `GET /v1/models` | — | live entitlements merged across plans (static fallback when billing is down) |
 | `GET /v1/quota` | — | per-entitlement grant rows (balance-first) |
-- `GET /dashboard` - built-in status page (lane, credentials, quota; no token needed)
+| `GET /dashboard` | — | built-in status page: lane, credentials, quota, request inspector (no token needed) |
+| `GET /inspect?limit=N` | — | captured exchanges, newest first (summaries only) |
+| `GET /inspect?id=N` | — | one captured exchange with headers and bodies |
+| `GET /inspect?limit=N&full=1` | — | JSON export with bodies (≤50 entries) |
+| `DELETE /inspect` | — | drop every captured exchange |
 | `GET /health` | — | lane, credential ring, device-mid state |
 
 Streaming: Anthropic callers get the upstream SSE stream untouched; OpenAI
@@ -116,6 +120,9 @@ indexing, terminated with `[DONE]`).
 | `ZCODE_FORCE_THINKING` | *(off)* | `1` = force thinking on every request |
 | `ZCODE_CORS_ORIGIN` | *(off)* | `*` or comma list; opt-in browser support |
 | `ZCODE_SDK_USER_AGENT` | auto | override the SDK user-agent face |
+| `ZCODE_CAPTURE` | *(off)* | `1` = record request/response exchanges for the inspector (ring lives in memory) |
+| `ZCODE_CAPTURE_SIZE` | `200` | inspector ring capacity (exchanges kept) |
+| `ZCODE_CAPTURE_BODY_MAX` | `65536` | bytes of each body the inspector keeps; longer bodies are truncated and flagged |
 
 ## Lane rules (verified against production)
 
@@ -150,7 +157,8 @@ expiring within 2 hours.
 | Path | Purpose |
 |---|---|
 | `cmd/zcode-bridge` | entry point: serve + login subcommand |
-| `internal/server` | HTTP routes, SSE translation, session affinity |
+| `internal/server` | HTTP routes, SSE translation, session affinity, dashboard, inspector |
+| `internal/capture` | bounded request/response ring for the inspector (opt-in, secrets redacted) |
 | `internal/transport` | plan-lane client: shaping, rotation, retries |
 | `internal/models` | OpenAI ↔ Anthropic translation |
 | `internal/quota` | billing readout + per-model merge |
@@ -203,6 +211,23 @@ Changes made in this fork, relative to upstream `azrinaldi/zcode-bridge`:
    from Task Scheduler.
 3. **Hardened `.gitignore`** — never commit `data/`, `plan-jwt.json`, `logs/`,
    binaries, or `*.bak-*` backups.
+4. **Built-in request inspector** (idea from
+   [TheHolyOneZ/ZProxy](https://github.com/TheHolyOneZ/ZProxy), but no MITM):
+   the bridge already terminates both legs, so it records the exchange it
+   forwards — method, path, route, model, serving account, request/response
+   headers and bodies, status, upstream envelope code
+   (3012/3008/3009/1113), duration, first-token latency and every upstream
+   attempt/rotation. Opt-in via `ZCODE_CAPTURE=1`; off means `Begin` returns
+   nil and the handlers pay nothing. The ring is bounded
+   (`ZCODE_CAPTURE_SIZE`, default 200) with bodies cut at
+   `ZCODE_CAPTURE_BODY_MAX` (default 64KB). The dashboard's Inspector tab
+   filters by method/status/code, searches paths, opens a detail view and
+   exports JSON; `Authorization`, cookie and API-key headers plus JWT-shaped
+   strings in bodies are redacted before anything is stored. The JSON
+   endpoints (`/inspect`, later `/v1/usage`) require `ZCODE_BRIDGE_TOKEN` when
+   it is set; `/dashboard` itself stays open. Files: `internal/capture`,
+   `internal/server/inspect.go`, `internal/server/dashboard.go`,
+   `internal/transport` (attempt hooks).
 
 ## License
 
