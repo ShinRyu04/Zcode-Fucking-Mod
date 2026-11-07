@@ -6,10 +6,11 @@
 > copyright (c) 2026 azrinaldi). Code here differs from upstream in behaviour, not
 > only in packaging. Maintained by [ShinRyu04](https://github.com/ShinRyu04).
 > Upstream stays the canonical source; see [Modifications](#modifications) for what changed.
+> This fork lives at
+> [ShinRyu04/zcode-bridge-mod](https://github.com/ShinRyu04/zcode-bridge-mod).
 
-[![release](https://img.shields.io/github/v/release/azrinaldi/zcode-bridge?color=blue)](https://github.com/azrinaldi/zcode-bridge/releases/latest)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![go](https://img.shields.io/github/go-mod/go-version/azrinaldi/zcode-bridge)](go.mod)
+[![go](https://img.shields.io/github/go-mod/go-version/ShinRyu04/zcode-bridge-mod)](go.mod)
 [![deps](https://img.shields.io/badge/dependencies-stdlib%20only-informational)](go.mod)
 
 OpenAI- and Anthropic-compatible HTTP front end for the **ZCode start-plan
@@ -22,24 +23,35 @@ login's own credential.
 
 Single static Go binary, standard library only, no runtime dependencies.
 
+This fork adds, on top of upstream:
+
+- `POST /v1/responses` — OpenAI Responses wire format for Codex CLI
+  (`wire_api = "responses"`), streaming lifecycle included.
+- A native request inspector — no MITM: the bridge tees the exchanges it
+  already relays, redacts secrets, and shows them in the dashboard's
+  **Inspector** tab (`ZCODE_CAPTURE=1` to enable).
+- Real throughput metering — tokens come from upstream usage blocks, not byte
+  estimates; today/all-time aggregates, per-model rows and a t/s chart live in
+  the dashboard's **Penggunaan** (usage) tab, backed by
+  `GET /v1/usage` and `data/usage-YYYYMMDD.jsonl`.
+
 ## Install
 
-Prebuilt binaries (linux/darwin/windows, amd64/arm64) are on the
-[releases page](https://github.com/azrinaldi/zcode-bridge/releases/latest):
+This fork publishes no release artifacts: build it yourself (Go 1.27+, no
+other dependencies). Upstream's prebuilt binaries are published on
+[azrinaldi/zcode-bridge releases](https://github.com/azrinaldi/zcode-bridge/releases/latest)
+but do not contain the changes below.
 
 ```sh
-curl -fsSL -o zcode-bridge \
-  https://github.com/azrinaldi/zcode-bridge/releases/latest/download/zcode-bridge-linux-amd64
-chmod +x zcode-bridge && ./zcode-bridge --version
-```
-
-Or build from source (Go 1.27+, no other dependencies):
-
-```sh
+git clone https://github.com/ShinRyu04/zcode-bridge-mod.git
+cd zcode-bridge-mod
 go build -o zcode-bridge ./cmd/zcode-bridge
 ./zcode-bridge login            # opens the device flow; approve in a browser
 ./zcode-bridge                  # serves on 127.0.0.1:20131
 ```
+
+On Windows, `start-bridge.cmd` / `start-bridge-hidden.vbs` do the same headless
+(`stop-bridge.cmd` stops it).
 
 `login` prints an approval URL; open it in any browser signed in to Z.ai
 (the desktop app is not required). The resulting plan JWT + refresh token is
@@ -86,11 +98,12 @@ curl -s http://127.0.0.1:20131/v1/chat/completions \
 | `POST /v1/responses` | OpenAI Responses | Codex CLI (`wire_api = "responses"`): input/instructions/tools mapped onto the Anthropic layer, full Responses SSE lifecycle |
 | `GET /v1/models` | — | live entitlements merged across plans (static fallback when billing is down) |
 | `GET /v1/quota` | — | per-entitlement grant rows (balance-first) |
-| `GET /dashboard` | — | built-in status page: lane, credentials, quota, request inspector (no token needed) |
+| `GET /dashboard` | — | built-in status page: lane, credentials, quota, plus **Inspector** and **Penggunaan** tabs (no token needed) |
 | `GET /inspect?limit=N` | — | captured exchanges, newest first (summaries only) |
 | `GET /inspect?id=N` | — | one captured exchange with headers and bodies |
 | `GET /inspect?limit=N&full=1` | — | JSON export with bodies (≤50 entries) |
 | `DELETE /inspect` | — | drop every captured exchange |
+| `GET /v1/usage` | — | token + throughput aggregates: `today`, `all_time`, `recent` (needs `ZCODE_BRIDGE_TOKEN` when set) |
 | `GET /health` | — | lane, credential ring, device-mid state |
 
 Streaming: Anthropic callers get the upstream SSE stream untouched; OpenAI
@@ -124,6 +137,7 @@ indexing, terminated with `[DONE]`).
 | `ZCODE_CAPTURE` | *(off)* | `1` = record request/response exchanges for the inspector (ring lives in memory) |
 | `ZCODE_CAPTURE_SIZE` | `200` | inspector ring capacity (exchanges kept) |
 | `ZCODE_CAPTURE_BODY_MAX` | `65536` | bytes of each body the inspector keeps; longer bodies are truncated and flagged |
+| `ZCODE_USAGE_DIR` | `data` | where `usage-YYYYMMDD.jsonl` rows are appended (0700 dir, 0600 file) |
 
 ## Lane rules (verified against production)
 
@@ -158,8 +172,9 @@ expiring within 2 hours.
 | Path | Purpose |
 |---|---|
 | `cmd/zcode-bridge` | entry point: serve + login subcommand |
-| `internal/server` | HTTP routes, SSE translation, session affinity, dashboard, inspector |
+| `internal/server` | HTTP routes incl. `/v1/responses`, SSE translation, session affinity, dashboard (status/inspector/usage) |
 | `internal/capture` | bounded request/response ring for the inspector (opt-in, secrets redacted) |
+| `internal/usage` | per-request token/throughput meter, JSONL persistence, today/all-time aggregates |
 | `internal/transport` | plan-lane client: shaping, rotation, retries |
 | `internal/models` | OpenAI ↔ Anthropic translation |
 | `internal/quota` | billing readout + per-model merge |
@@ -212,7 +227,7 @@ Changes made in this fork, relative to upstream `azrinaldi/zcode-bridge`:
    from Task Scheduler.
 3. **Hardened `.gitignore`** — never commit `data/`, `plan-jwt.json`, `logs/`,
    binaries, or `*.bak-*` backups.
-5. **Responses API for Codex CLI** (wire format documented by
+4. **Responses API for Codex CLI** (wire format documented by
    [TriDefender/zcode-api](https://github.com/TriDefender/zcode-api)):
    `POST /v1/responses` accepts `model`, `input` (string or item array),
    `instructions`, `tools`, `tool_choice`, `max_output_tokens`, `temperature`,
@@ -234,7 +249,7 @@ Changes made in this fork, relative to upstream `azrinaldi/zcode-bridge`:
    `wire_api = "responses"`, `base_url = "http://127.0.0.1:20131/v1"`.
    Files: `internal/models/responses.go`,
    `internal/models/responses_stream.go`, `internal/server/responses.go`.
-6. **Built-in request inspector** (idea from
+5. **Built-in request inspector** (idea from
    [TheHolyOneZ/ZProxy](https://github.com/TheHolyOneZ/ZProxy), but no MITM):
    the bridge already terminates both legs, so it records the exchange it
    forwards — method, path, route, model, serving account, request/response
@@ -247,10 +262,25 @@ Changes made in this fork, relative to upstream `azrinaldi/zcode-bridge`:
    filters by method/status/code, searches paths, opens a detail view and
    exports JSON; `Authorization`, cookie and API-key headers plus JWT-shaped
    strings in bodies are redacted before anything is stored. The JSON
-   endpoints (`/inspect`, later `/v1/usage`) require `ZCODE_BRIDGE_TOKEN` when
-   it is set; `/dashboard` itself stays open. Files: `internal/capture`,
+   endpoints (`/inspect`, `/v1/usage`) require `ZCODE_BRIDGE_TOKEN` when it is
+   set; `/dashboard` itself stays open. Files: `internal/capture`,
    `internal/server/inspect.go`, `internal/server/dashboard.go`,
    `internal/transport` (attempt hooks).
+6. **Usage and throughput metering** (presentation borrowed from
+   [ShinRyu04/zcode-speed-panel](https://github.com/ShinRyu04/zcode-speed-panel),
+   measurement redone): every request that reaches the upstream usage block is
+   recorded with its model, serving account, input/output/cache-read tokens,
+   first-token latency, generation time and tokens/second. Streaming requests
+   measure from the first `content_block_delta` to `message_stop`; non-streaming
+   ones keep the full latency but contribute no t/s, so the average is not
+   diluted by requests that never had a first token. Rows append to
+   `data/usage-YYYYMMDD.jsonl`; on boot the newest 10k rows are re-read so
+   today's totals and the chart survive a restart. Exposed as `GET /v1/usage`
+   and the dashboard's **Penggunaan** tab: today vs all-time totals, a focal
+   average t/s number, per-model table, and a 60-request chart with speed tiers
+   (`<40`, `40-80`, `80-160`, `160-240`, `240-320`, `320+` tok/s) drawn as
+   inline SVG — no charts library, still stdlib only. Files:
+   `internal/usage`, `internal/server/usage.go`, `internal/server/dashboard.go`.
 
 ## License
 

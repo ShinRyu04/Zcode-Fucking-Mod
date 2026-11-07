@@ -25,6 +25,7 @@ import (
 	"github.com/azrinaldi/zcode-bridge/internal/capture"
 	"github.com/azrinaldi/zcode-bridge/internal/systemprompt"
 	"github.com/azrinaldi/zcode-bridge/internal/transport"
+	"github.com/azrinaldi/zcode-bridge/internal/usage"
 )
 
 func fakeJWT(user string) string {
@@ -254,6 +255,9 @@ func setupBridge(t *testing.T) {
 		os.Setenv("ZCODE_RETRY_BASE_MS", "10")
 		accountsFile := filepath.Join(os.TempDir(), fmt.Sprintf("zcode-smoke-accounts-%d.json", os.Getpid()))
 		os.Setenv("ZCODE_ACCOUNTS_FILE", accountsFile)
+		if dir, dirErr := os.MkdirTemp("", "zcode-usage-"); dirErr == nil {
+			os.Setenv("ZCODE_USAGE_DIR", dir)
+		}
 		accounts.ResetForTest()
 		Configure(Config{Port: 0, Host: "127.0.0.1", BridgeToken: "", ModelsCache: 100 * time.Millisecond})
 		capture.EnableForTest(50, 1<<14)
@@ -320,7 +324,8 @@ func TestDashboardServesStatusPage(t *testing.T) {
 	}
 	page := string(raw)
 	for _, want := range []string{"zcode-bridge", "/health", "/quota", "id=\"health\"", "id=\"quota\"",
-		"Inspector", "id=\"panel-inspector\"", "/inspect?limit=200"} {
+		"Inspector", "id=\"panel-inspector\"", "/inspect?limit=200",
+		"Penggunaan", "id=\"panel-usage\"", "renderUsageChart", "/v1/usage"} {
 		if !strings.Contains(page, want) {
 			t.Fatalf("dashboard page missing %q", want)
 		}
@@ -1003,5 +1008,71 @@ func TestResponsesCustomToolMapping(t *testing.T) {
 	wire, _ := json.Marshal(seen.anthropic)
 	if !strings.Contains(string(wire), "tool_result") {
 		t.Fatalf("history not translated: %v", seen.anthropic["messages"])
+	}
+}
+
+func TestUsageEndpointAggregatesStreamedRequest(t *testing.T) {
+	setupBridge(t)
+	usage.ResetForTest(t.TempDir())
+	resetSeen()
+	req, _ := http.NewRequest("POST", bridgeURL()+"/v1/chat/completions", bytes.NewReader([]byte(
+		`{"model":"glm-5.3-flash","stream":true,"messages":[{"role":"user","content":"halo"}]}`)))
+	req.Header.Set("Content-Type", "application/json")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	io.Copy(io.Discard, res.Body)
+	res.Body.Close()
+	if res.StatusCode != 200 {
+		t.Fatalf("chat status = %d", res.StatusCode)
+	}
+
+	status, text, body := doRequest(t, "GET", "/v1/usage", nil)
+	if status != 200 {
+		t.Fatalf("usage status %d: %s", status, text)
+	}
+	today := body["today"].(map[string]any)
+	if today["requests"].(float64) != 1 {
+		t.Fatalf("requests = %v", today["requests"])
+	}
+	if today["input_tokens"].(float64) != 10 || today["output_tokens"].(float64) != 5 {
+		t.Fatalf("tokens = %v / %v", today["input_tokens"], today["output_tokens"])
+	}
+	perModel := today["per_model"].(map[string]any)
+	if _, ok := perModel["glm-5.3-flash"]; !ok {
+		t.Fatalf("per_model = %v", perModel)
+	}
+	recent := body["recent"].([]any)
+	if len(recent) != 1 {
+		t.Fatalf("recent = %v", recent)
+	}
+	row := recent[0].(map[string]any)
+	if row["model"] != "glm-5.3-flash" || row["stream"] != true {
+		t.Fatalf("recent row = %v", row)
+	}
+	if allTime := body["all_time"].(map[string]any); allTime["requests"].(float64) != 1 {
+		t.Fatalf("all_time = %v", allTime)
+	}
+}
+
+func TestUsageEndpointTokenGate(t *testing.T) {
+	setupBridge(t)
+	previous := cfg.BridgeToken
+	cfg.BridgeToken = "usage-token"
+	defer func() { cfg.BridgeToken = previous }()
+
+	if code, _, _ := doRequest(t, "GET", "/v1/usage", nil); code != 401 {
+		t.Fatalf("unauthenticated usage = %d", code)
+	}
+	req, _ := http.NewRequest("GET", bridgeURL()+"/v1/usage", nil)
+	req.Header.Set("Authorization", "Bearer usage-token")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != 200 {
+		t.Fatalf("authenticated usage = %d", res.StatusCode)
 	}
 }

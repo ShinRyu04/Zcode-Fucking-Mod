@@ -29,6 +29,7 @@ import (
 	"github.com/azrinaldi/zcode-bridge/internal/models"
 	"github.com/azrinaldi/zcode-bridge/internal/quota"
 	"github.com/azrinaldi/zcode-bridge/internal/transport"
+	"github.com/azrinaldi/zcode-bridge/internal/usage"
 )
 
 const maxBodyBytes = 32 << 20
@@ -201,12 +202,14 @@ func handleMessagesInner(w http.ResponseWriter, r *http.Request, body map[string
 	rec := capture.FromContext(r.Context())
 	rec.NoteModel(stringOf(payload["model"]))
 	rec.NoteStream(stream)
+	meter := usage.Start(stringOf(payload["model"]), "", stream)
+	defer meter.Finish()
 	upstream, err := transport.SendAnthropic(transport.SendOpts{
 		Body:            payload,
 		AccountID:       accountID,
 		ClientSessionID: SessionKeyFor(r, body),
 		Context:         r.Context(),
-		Hooks:           captureHooks(rec),
+		Hooks:           hooksFor(rec, meter),
 	})
 	if err != nil {
 		rec.NoteError(upstreamCode(err))
@@ -215,7 +218,7 @@ func handleMessagesInner(w http.ResponseWriter, r *http.Request, body map[string
 	}
 	defer upstream.Body.Close()
 	if stream {
-		pipeStream(w, upstream, "anthropic", stringOf(payload["model"]), rec)
+		pipeStream(w, upstream, "anthropic", stringOf(payload["model"]), rec, meter)
 		return
 	}
 	raw, err := io.ReadAll(io.LimitReader(upstream.Body, 32<<20))
@@ -223,6 +226,7 @@ func handleMessagesInner(w http.ResponseWriter, r *http.Request, body map[string
 		anthropicError(w, 502, "Upstream returned a non-JSON response", "")
 		return
 	}
+	meter.NoteUsage(responseUsage(raw))
 	sendJSON(w, 200, json.RawMessage(raw))
 }
 
@@ -245,12 +249,14 @@ func handleChatCompletionsInner(w http.ResponseWriter, r *http.Request, body map
 	rec := capture.FromContext(r.Context())
 	rec.NoteModel(model)
 	rec.NoteStream(stream)
+	meter := usage.Start(model, "", stream)
+	defer meter.Finish()
 	upstream, err := transport.SendAnthropic(transport.SendOpts{
 		Body:            translated,
 		AccountID:       accountID,
 		ClientSessionID: SessionKeyFor(r, body),
 		Context:         r.Context(),
-		Hooks:           captureHooks(rec),
+		Hooks:           hooksFor(rec, meter),
 	})
 	if err != nil {
 		rec.NoteError(upstreamCode(err))
@@ -259,7 +265,7 @@ func handleChatCompletionsInner(w http.ResponseWriter, r *http.Request, body map
 	}
 	defer upstream.Body.Close()
 	if stream {
-		pipeStream(w, upstream, "openai", model, rec)
+		pipeStream(w, upstream, "openai", model, rec, meter)
 		return
 	}
 	raw, err := io.ReadAll(io.LimitReader(upstream.Body, 32<<20))
@@ -272,6 +278,7 @@ func handleChatCompletionsInner(w http.ResponseWriter, r *http.Request, body map
 		openAIError(w, 502, "Upstream returned a non-JSON response", nil)
 		return
 	}
+	meter.NoteUsage(mapOf(result["usage"]))
 	sendJSON(w, 200, models.AnthropicToOpenAI(result, model))
 }
 
@@ -280,14 +287,21 @@ func stringOf(v any) string {
 	return s
 }
 
-// captureHooks turns transport attempts into inspector events and records the
-// account that actually served the request.
-func captureHooks(rec *capture.Recorder) *transport.Hooks {
-	if rec == nil {
+// hooksFor turns transport attempts into inspector events and attributes the
+// served account to both the capture ring and the usage meter.
+func hooksFor(rec *capture.Recorder, meter *usage.Meter) *transport.Hooks {
+	if rec == nil && meter == nil {
 		return nil
 	}
 	return &transport.Hooks{Attempt: func(ev transport.AttemptEvent) {
 		account := firstNonEmpty(ev.AccountID, ev.Label)
+		if ev.Served {
+			rec.NoteAccount(account)
+			meter.SetAccount(account)
+		}
+		if rec == nil {
+			return
+		}
 		detail := ""
 		if ev.Err != nil {
 			detail = ev.Err.Error()
@@ -302,10 +316,38 @@ func captureHooks(rec *capture.Recorder) *transport.Hooks {
 			Detail:     detail,
 			DurationMS: ev.Duration.Milliseconds(),
 		})
-		if ev.Served {
-			rec.NoteAccount(account)
-		}
 	}}
+}
+
+// mapOf is a nil-safe type assertion for nested JSON objects.
+func mapOf(v any) map[string]any {
+	m, _ := v.(map[string]any)
+	return m
+}
+
+// responseUsage extracts the usage object from a non-streaming Anthropic body.
+func responseUsage(raw []byte) map[string]any {
+	var envelope struct {
+		Usage map[string]any `json:"usage"`
+	}
+	if json.Unmarshal(raw, &envelope) != nil {
+		return nil
+	}
+	return envelope.Usage
+}
+
+// observeUsage feeds an Anthropic SSE event's usage block to the meter.
+// message_start carries the input/cache counts, message_delta the output count.
+func observeUsage(event map[string]any, meter *usage.Meter) {
+	if meter == nil || event == nil {
+		return
+	}
+	switch stringOf(event["type"]) {
+	case "message_start":
+		meter.NoteUsage(mapOf(mapOf(event["message"])["usage"]))
+	case "message_delta":
+		meter.NoteUsage(mapOf(event["usage"]))
+	}
 }
 
 // upstreamCode extracts the gateway envelope code for the inspector filter.
@@ -324,7 +366,7 @@ func isJSON(raw []byte) bool {
 // pipeStream streams upstream SSE frames to the caller. Anthropic frames
 // pass through untouched; OpenAI callers get frames rewritten into
 // chat.completion.chunk.
-func pipeStream(w http.ResponseWriter, upstream *http.Response, dialect, model string, rec *capture.Recorder) {
+func pipeStream(w http.ResponseWriter, upstream *http.Response, dialect, model string, rec *capture.Recorder, meter *usage.Meter) {
 	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache, no-transform")
 	w.Header().Set("Connection", "keep-alive")
@@ -353,13 +395,22 @@ func pipeStream(w http.ResponseWriter, upstream *http.Response, dialect, model s
 			chunk := string(buf[:n])
 			if strings.Contains(chunk, "content_block_delta") {
 				rec.NoteFirstToken()
+				meter.FirstToken()
 			}
 			carry += chunk
 			if dialect != "openai" {
 				if !writeSSE(string(buf[:n])) {
 					return
 				}
-				carry = ""
+				for {
+					idx := strings.Index(carry, "\n\n")
+					if idx < 0 {
+						break
+					}
+					frame := carry[:idx]
+					carry = carry[idx+2:]
+					observeUsage(parseFrameEvent(frame), meter)
+				}
 			} else {
 				for {
 					idx := strings.Index(carry, "\n\n")
@@ -368,20 +419,11 @@ func pipeStream(w http.ResponseWriter, upstream *http.Response, dialect, model s
 					}
 					frame := carry[:idx]
 					carry = carry[idx+2:]
-					var dataLine string
-					for _, line := range strings.Split(frame, "\n") {
-						if strings.HasPrefix(line, "data:") {
-							dataLine = strings.TrimSpace(strings.TrimPrefix(line, "data:"))
-							break
-						}
-					}
-					if dataLine == "" || dataLine == "[DONE]" {
+					event := parseFrameEvent(frame)
+					if event == nil {
 						continue
 					}
-					var event map[string]any
-					if json.Unmarshal([]byte(dataLine), &event) != nil {
-						continue
-					}
+					observeUsage(event, meter)
 					if chunk := toOpenAIChunk(event, model, streamState); chunk != nil {
 						encoded, _ := json.Marshal(chunk)
 						if !writeSSE("data: " + string(encoded) + "\n\n") {
@@ -404,10 +446,9 @@ func pipeStream(w http.ResponseWriter, upstream *http.Response, dialect, model s
 						return
 					}
 				}
-			} else if carry != "" {
-				if !writeSSE(carry) {
-					return
-				}
+			} else {
+				// Bytes are already on the wire; only finish metering.
+				observeUsage(parseFrameEvent(carry), meter)
 			}
 			if err != io.EOF {
 				// Stream aborted mid-way: report in-band.
@@ -428,18 +469,8 @@ func pipeStream(w http.ResponseWriter, upstream *http.Response, dialect, model s
 // trailing blank line) into an OpenAI chunk write; returns the bytes to
 // write or "" when nothing translatable remains.
 func flushOpenAIFrame(frame, model string, state *chunkState) string {
-	var dataLine string
-	for _, line := range strings.Split(frame, "\n") {
-		if strings.HasPrefix(line, "data:") {
-			dataLine = strings.TrimSpace(strings.TrimPrefix(line, "data:"))
-			break
-		}
-	}
-	if dataLine == "" || dataLine == "[DONE]" {
-		return ""
-	}
-	var event map[string]any
-	if json.Unmarshal([]byte(dataLine), &event) != nil {
+	event := parseFrameEvent(frame)
+	if event == nil {
 		return ""
 	}
 	chunk := toOpenAIChunk(event, model, state)
@@ -455,6 +486,26 @@ func flushOpenAIFrame(frame, model string, state *chunkState) string {
 		out += "data: [DONE]\n\n"
 	}
 	return out
+}
+
+// parseFrameEvent decodes the data line of one SSE frame; nil means the frame
+// carries nothing (keep-alive comment, [DONE], malformed JSON).
+func parseFrameEvent(frame string) map[string]any {
+	var dataLine string
+	for _, line := range strings.Split(frame, "\n") {
+		if strings.HasPrefix(line, "data:") {
+			dataLine = strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+			break
+		}
+	}
+	if dataLine == "" || dataLine == "[DONE]" {
+		return nil
+	}
+	var event map[string]any
+	if json.Unmarshal([]byte(dataLine), &event) != nil {
+		return nil
+	}
+	return event
 }
 
 // chunkState tracks Anthropic block indexes -> OpenAI tool_call indexes.

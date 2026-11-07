@@ -98,6 +98,13 @@ pre{background:#0f131b;border:1px solid var(--line);border-radius:8px;padding:12
 .ev{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;font-size:13px;border:1px solid var(--line);border-radius:8px;padding:6px 10px}
 .emptystate{border:1px dashed var(--line);border-radius:10px;padding:22px;text-align:center;color:var(--dim)}
 .qnote{color:var(--dim);font-size:13px;margin:0 0 8px}
+.chartwrap{background:#0f131b;border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+.chartwrap svg{display:block;width:100%;height:120px}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--dim);margin-top:10px}
+.legend span{display:inline-flex;align-items:center;gap:5px}
+.swatch{display:inline-block;width:8px;height:8px;border-radius:2px}
+.split{display:grid;grid-template-columns:1.1fr .9fr;gap:20px;align-items:start}
+@media (max-width:760px){.split{grid-template-columns:1fr}}
 @media (prefers-reduced-motion:reduce){.fill{transition:none}}
 @media (max-width:760px){.cols{grid-template-columns:1fr}.toolbtns{margin-left:0;width:100%}.toolbtns .btn,.toolbtns button{flex:1 1 auto;text-align:center}}
 @media (max-width:560px){.big{font-size:26px}.card{padding:16px}th,td{white-space:normal;overflow-wrap:anywhere}td.path{max-width:none}}
@@ -113,6 +120,7 @@ pre{background:#0f131b;border:1px solid var(--line);border-radius:8px;padding:12
 <div class="tabs" role="tablist" aria-label="Panel dashboard">
 <button role="tab" id="tab-status" aria-controls="panel-status" aria-selected="true" data-panel="panel-status">Status</button>
 <button role="tab" id="tab-inspector" aria-controls="panel-inspector" aria-selected="false" data-panel="panel-inspector">Inspector</button>
+<button role="tab" id="tab-usage" aria-controls="panel-usage" aria-selected="false" data-panel="panel-usage">Penggunaan</button>
 </div>
 
 <main>
@@ -164,6 +172,25 @@ pre{background:#0f131b;border:1px solid var(--line);border-radius:8px;padding:12
 <p class="qnote" id="istate">memuat...</p>
 <div id="ilist" class="tablewrap" aria-live="polite"></div>
 <div id="idetail"></div>
+</div>
+</section>
+
+<section id="panel-usage" role="tabpanel" aria-labelledby="tab-usage" hidden>
+<div class="card" aria-label="Penggunaan token dan kecepatan">
+<h2>Penggunaan <span class="dim" id="ustate" style="text-transform:none;letter-spacing:0;font-weight:400"></span></h2>
+<div class="split">
+<div class="kv" id="utotals"><span>Memuat...</span></div>
+<div>
+<span class="qnote">Rata-rata kecepatan generasi hari ini</span>
+<div class="big" id="utps">-<small> tok/dtk</small></div>
+<p class="note" id="utpsnote">Dihitung dari token upstream dibagi waktu token pertama sampai selesai, bukan tebakan byte.</p>
+</div>
+</div>
+<div class="meta" id="ualltime"></div>
+<h3>Kecepatan per permintaan terakhir</h3>
+<div id="uchart"></div>
+<h3>Per model</h3>
+<div id="utable" class="tablewrap" aria-live="polite"></div>
 </div>
 </section>
 </main>
@@ -485,9 +512,101 @@ byId('iexport').addEventListener('click', function(ev){
   }).catch(function(){});
 });
 
+// ---- usage tab ----
+var USAGE = { loaded:false };
+function tpsColor(v){
+  if(v < 40) return '#34d399';
+  if(v < 80) return '#a3e635';
+  if(v < 160) return '#fbbf24';
+  if(v < 240) return '#fb923c';
+  if(v < 320) return '#f87171';
+  return '#e879f9';
+}
+function tpsClass(v){
+  if(v < 40) return 'ok';
+  if(v < 80) return '';
+  if(v < 160) return 'warn';
+  return 'bad';
+}
+function fmtTps(v){ return (Number(v)||0).toFixed(1); }
+function renderUsageChart(recent){
+  var rows = (recent || []).filter(function(r){ return Number(r.tps) > 0; }).slice(-60);
+  if(!rows.length){
+    return '<div class="emptystate">Belum ada permintaan streaming yang terukur.<br>Bar muncul setelah satu permintaan dengan <code>stream: true</code> selesai.</div>';
+  }
+  var maxTps = 0;
+  for(var i=0;i<rows.length;i++){ if(rows[i].tps > maxTps) maxTps = rows[i].tps; }
+  // Scale to what actually happened; the 320 tok/dtk tier line only appears
+  // once the data reaches it, otherwise the chart is all empty space.
+  var yMax = Math.max(80, Math.ceil(maxTps / 80) * 80);
+  var W = 600, H = 120, gap = 2;
+  var barW = Math.max(1, (W - (rows.length - 1) * gap) / rows.length);
+  var bars = rows.map(function(r, i){
+    var h = Math.max(2, Number(r.tps) / yMax * H);
+    var x = i * (barW + gap);
+    return '<rect x="' + x.toFixed(1) + '" y="' + (H - h).toFixed(1) + '" width="' + barW.toFixed(1) + '" height="' + h.toFixed(1) + '" fill="' + tpsColor(r.tps) + '">'
+      + '<title>' + esc(r.model) + ' \u00b7 ' + fmtTps(r.tps) + ' tok/dtk \u00b7 ' + esc(whenISO(r.at)) + '</title></rect>';
+  }).join('');
+  var refY = yMax >= 320 ? '<line x1="0" y1="' + (H - 320 / yMax * H).toFixed(1) + '" x2="' + W + '" y2="' + (H - 320 / yMax * H).toFixed(1) + '" stroke="#334155" stroke-dasharray="4 4" vector-effect="non-scaling-stroke"/>' : '';
+  var refNote = yMax >= 320 ? '<span class="dim">garis putus-putus: 320 tok/dtk</span>' : '';
+  var legend = [['#34d399','&lt;40'],['#a3e635','40-80'],['#fbbf24','80-160'],['#fb923c','160-240'],['#f87171','240-320'],['#e879f9','320+']]
+    .map(function(t){ return '<span><span class="swatch" style="background:' + t[0] + '"></span>' + t[1] + '</span>'; }).join('');
+  return '<div class="chartwrap"><svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Kecepatan generasi ' + rows.length + ' permintaan terakhir" preserveAspectRatio="none">'
+    + refY + bars + '</svg></div><div class="legend">' + legend + refNote + '</div>';
+}
+function renderUsage(res){
+  var today = res.today || {}, allTime = res.all_time || {};
+  byId('ustate').textContent = today.requests ? today.requests + ' permintaan hari ini' : '';
+  var totals = [
+    ['Permintaan', today.requests || 0],
+    ['Token masuk', fmt(today.input_tokens)],
+    ['Token keluar', fmt(today.output_tokens)],
+    ['Cache dibaca', fmt(today.cache_read_tokens)]
+  ].map(function(t){ return '<div><span>' + t[0] + '</span><b>' + t[1] + '</b></div>'; }).join('');
+  if(today.requests) totals += '<div><span>Rata-rata tok/dtk</span><b>' + fmtTps(today.avg_tps) + '</b></div>';
+  byId('utotals').innerHTML = totals;
+  byId('utps').innerHTML = fmtTps(today.avg_tps) + '<small> tok/dtk</small>';
+  byId('utpsnote').textContent = today.requests
+    ? 'Dari ' + today.requests + ' permintaan hari ini; hanya permintaan streaming yang punya waktu token pertama yang dihitung.'
+    : 'Belum ada permintaan hari ini.';
+  byId('ualltime').innerHTML = [
+    ['Total permintaan', fmt(allTime.requests || 0)],
+    ['Token masuk', fmt(allTime.input_tokens)],
+    ['Token keluar', fmt(allTime.output_tokens)],
+    ['Rata-rata tok/dtk', fmtTps(allTime.avg_tps)]
+  ].map(function(t){ return '<div><span>' + t[0] + '</span><b>' + t[1] + '</b></div>'; }).join('');
+  byId('uchart').innerHTML = renderUsageChart(res.recent);
+  var models = today.per_model || {};
+  var names = Object.keys(models).sort(function(a, b){ return models[b].requests - models[a].requests; });
+  if(!names.length){
+    byId('utable').innerHTML = '<div class="emptystate">Belum ada data model. Baris tulis ke <code>data/usage-YYYYMMDD.jsonl</code> setelah satu permintaan sukses.</div>';
+    return;
+  }
+  var head = '<table><thead><tr><th>Model</th><th class="num">Permintaan</th><th class="num">Masuk</th><th class="num">Keluar</th><th class="num">Cache</th><th class="num">tok/dtk</th></tr></thead><tbody>';
+  var rows = names.map(function(name){
+    var m = models[name];
+    return '<tr><td class="mono">' + esc(name) + '</td>'
+      + '<td class="num">' + fmt(m.requests) + '</td>'
+      + '<td class="num">' + fmt(m.input_tokens) + '</td>'
+      + '<td class="num">' + fmt(m.output_tokens) + '</td>'
+      + '<td class="num">' + fmt(m.cache_read_tokens) + '</td>'
+      + '<td class="num">' + fmtTps(m.avg_tps) + '</td></tr>';
+  }).join('');
+  byId('utable').innerHTML = head + rows + '</tbody></table>';
+}
+function loadUsage(){
+  api('/v1/usage').then(function(res){
+    USAGE.loaded = true;
+    renderUsage(res || {});
+  }).catch(function(){
+    if(!USAGE.loaded) byId('utable').innerHTML = '<div class="emptystate">Gagal memuat /v1/usage.</div>';
+  });
+}
+
 // ---- tabs ----
 var activeTab = 'panel-status';
 var inspectorTimer = null;
+var usageTimer = null;
 function selectTab(panel, address){
   activeTab = panel;
   if(address !== false && window.history && window.history.replaceState){
@@ -504,6 +623,10 @@ function selectTab(panel, address){
     loadInspector();
     if(!inspectorTimer) inspectorTimer = setInterval(function(){ if(activeTab==='panel-inspector' && byId('auto').checked) loadInspector(); }, 5000);
   } else if(inspectorTimer){ clearInterval(inspectorTimer); inspectorTimer = null; }
+  if(panel === 'panel-usage'){
+    loadUsage();
+    if(!usageTimer) usageTimer = setInterval(function(){ if(activeTab==='panel-usage' && byId('auto').checked) loadUsage(); }, 5000);
+  } else if(usageTimer){ clearInterval(usageTimer); usageTimer = null; }
 }
 var initialHash = (window.location.hash || '').replace('#','');
 if(initialHash && byId('panel-' + initialHash)) selectTab('panel-' + initialHash, false);

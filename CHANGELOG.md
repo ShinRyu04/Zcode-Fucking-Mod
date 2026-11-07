@@ -19,6 +19,15 @@ versions follow [SemVer](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Usage metering: `GET /v1/usage` plus a **Penggunaan** dashboard tab. Each
+  request that reports an upstream usage block is recorded (model, serving
+  account, input/output/cache-read tokens, first-token latency, generation
+  time, tokens/second) to `data/usage-YYYYMMDD.jsonl` (`ZCODE_USAGE_DIR`
+  overrides the directory) and aggregated into today/all-time totals with a
+  per-model breakdown. The tab shows a focal average t/s, the per-model table
+  and a 60-request inline-SVG chart colour-coded by speed tier. Streaming
+  requests measure from first token to completion; non-streaming ones are
+  counted but kept out of the t/s average.
 - `POST /v1/responses`: OpenAI Responses wire format for Codex CLI
   (`wire_api = "responses"`). Requests reuse the chat -> Anthropic translation;
   replies are rendered as Responses output items for both non-streaming and

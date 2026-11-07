@@ -10,6 +10,7 @@ import (
 	"github.com/azrinaldi/zcode-bridge/internal/capture"
 	"github.com/azrinaldi/zcode-bridge/internal/models"
 	"github.com/azrinaldi/zcode-bridge/internal/transport"
+	"github.com/azrinaldi/zcode-bridge/internal/usage"
 )
 
 // handleResponses serves POST /v1/responses (OpenAI Responses wire format,
@@ -25,13 +26,15 @@ func handleResponses(w http.ResponseWriter, r *http.Request, body map[string]any
 	rec := capture.FromContext(r.Context())
 	rec.NoteModel(model)
 	rec.NoteStream(stream)
+	meter := usage.Start(model, "", stream)
+	defer meter.Finish()
 
 	upstream, err := transport.SendAnthropic(transport.SendOpts{
 		Body:            translated,
 		AccountID:       accountID,
 		ClientSessionID: SessionKeyFor(r, body),
 		Context:         r.Context(),
-		Hooks:           captureHooks(rec),
+		Hooks:           hooksFor(rec, meter),
 	})
 	if err != nil {
 		rec.NoteError(upstreamCode(err))
@@ -41,7 +44,7 @@ func handleResponses(w http.ResponseWriter, r *http.Request, body map[string]any
 	defer upstream.Body.Close()
 
 	if stream {
-		pipeResponsesStream(w, upstream, models.NewResponsesStream(model, meta), rec)
+		pipeResponsesStream(w, upstream, models.NewResponsesStream(model, meta), rec, meter)
 		return
 	}
 	raw, err := io.ReadAll(io.LimitReader(upstream.Body, 32<<20))
@@ -54,6 +57,7 @@ func handleResponses(w http.ResponseWriter, r *http.Request, body map[string]any
 		openAIError(w, 502, "Upstream returned a non-JSON response", nil)
 		return
 	}
+	meter.NoteUsage(mapOf(result["usage"]))
 	out := models.AnthropicToResponses(result, model, meta)
 	if instructions, _ := body["instructions"].(string); instructions != "" {
 		out["instructions"] = instructions
@@ -67,7 +71,7 @@ func handleResponses(w http.ResponseWriter, r *http.Request, body map[string]any
 // pipeResponsesStream rewrites the upstream Anthropic SSE stream into the
 // Responses event lifecycle. Nothing is buffered: each upstream frame is
 // translated and flushed as it arrives.
-func pipeResponsesStream(w http.ResponseWriter, upstream *http.Response, stream *models.ResponsesStream, rec *capture.Recorder) {
+func pipeResponsesStream(w http.ResponseWriter, upstream *http.Response, stream *models.ResponsesStream, rec *capture.Recorder, meter *usage.Meter) {
 	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache, no-transform")
 	w.Header().Set("Connection", "keep-alive")
@@ -102,7 +106,9 @@ func pipeResponsesStream(w http.ResponseWriter, upstream *http.Response, stream 
 		}
 		if strings.Contains(payload, "content_block_delta") {
 			rec.NoteFirstToken()
+			meter.FirstToken()
 		}
+		observeUsage(event, meter)
 		if !writeEvents(stream.Handle(event)) {
 			return false
 		}
