@@ -30,6 +30,7 @@ func record(t *testing.T, path, account string, status int, body string, raw []b
 }
 
 func TestDisabledRecorderIsNil(t *testing.T) {
+	t.Setenv("ZCODE_CAPTURE", "")
 	ResetForTest()
 	req := httptest.NewRequest("POST", "/v1/messages", nil)
 	if rec := Begin(req, nil); rec != nil {

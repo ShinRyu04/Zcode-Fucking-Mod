@@ -825,3 +825,183 @@ func TestInspectTokenGate(t *testing.T) {
 		t.Fatalf("authenticated inspect = %d", res.StatusCode)
 	}
 }
+
+func sseEvents(t *testing.T, raw string) []map[string]any {
+	t.Helper()
+	var events []map[string]any
+	for _, frame := range strings.Split(raw, "\n\n") {
+		var payload string
+		for _, line := range strings.Split(frame, "\n") {
+			if strings.HasPrefix(line, "data:") {
+				payload = strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+			}
+		}
+		if payload == "" || payload == "[DONE]" {
+			continue
+		}
+		var event map[string]any
+		if err := json.Unmarshal([]byte(payload), &event); err != nil {
+			t.Fatalf("bad SSE payload %q: %v", payload, err)
+		}
+		events = append(events, event)
+	}
+	return events
+}
+
+func TestResponsesNonStream(t *testing.T) {
+	setupBridge(t)
+	resetSeen()
+	status, text, body := doRequest(t, "POST", "/v1/responses", map[string]any{
+		"model": "glm-5.3-flash",
+		"input": "halo",
+	})
+	if status != 200 {
+		t.Fatalf("responses status %d: %s", status, text)
+	}
+	if body["object"] != "response" || body["status"] != "completed" {
+		t.Fatalf("envelope = %s", text)
+	}
+	if body["output_text"] != "STUB-OK" {
+		t.Fatalf("output_text = %v", body["output_text"])
+	}
+	output := body["output"].([]any)
+	item := output[0].(map[string]any)
+	if item["type"] != "message" || item["role"] != "assistant" {
+		t.Fatalf("output item = %v", item)
+	}
+	content := item["content"].([]any)
+	if content[0].(map[string]any)["text"] != "STUB-OK" {
+		t.Fatalf("content = %v", content)
+	}
+	usage := body["usage"].(map[string]any)
+	if usage["total_tokens"].(float64) != 18 {
+		t.Fatalf("usage = %v", usage)
+	}
+	if _, ok := usage["input_tokens_details"].(map[string]any); !ok {
+		t.Fatalf("usage details missing: %v", usage)
+	}
+}
+
+func TestResponsesStreamEvents(t *testing.T) {
+	setupBridge(t)
+	resetSeen()
+	req, _ := http.NewRequest("POST", bridgeURL()+"/v1/responses", bytes.NewReader([]byte(
+		`{"model":"glm-5.3-flash","stream":true,"input":"halo"}`)))
+	req.Header.Set("Content-Type", "application/json")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != 200 {
+		t.Fatalf("stream status = %d", res.StatusCode)
+	}
+	if ct := res.Header.Get("Content-Type"); !strings.HasPrefix(ct, "text/event-stream") {
+		t.Fatalf("content-type = %q", ct)
+	}
+	raw, _ := io.ReadAll(res.Body)
+	events := sseEvents(t, string(raw))
+	if len(events) < 6 {
+		t.Fatalf("events = %d: %s", len(events), raw)
+	}
+	var types []string
+	text := ""
+	for _, event := range events {
+		typ := str(event["type"])
+		types = append(types, typ)
+		switch typ {
+		case "response.output_text.delta":
+			text += str(event["delta"])
+		case "response.completed":
+			response := event["response"].(map[string]any)
+			if response["status"] != "completed" {
+				t.Fatalf("completed status = %v", response["status"])
+			}
+		}
+	}
+	want := []string{
+		"response.created",
+		"response.output_item.added",
+		"response.content_part.added",
+		"response.output_text.delta",
+		"response.output_text.delta",
+		"response.output_text.done",
+		"response.content_part.done",
+		"response.output_item.done",
+		"response.completed",
+	}
+	if strings.Join(types, ",") != strings.Join(want, ",") {
+		t.Fatalf("event types:\n got %v\nwant %v", types, want)
+	}
+	if text != "STUB-OK" {
+		t.Fatalf("streamed text = %q", text)
+	}
+	if types[len(types)-1] != "response.completed" {
+		t.Fatalf("last event = %s", types[len(types)-1])
+	}
+}
+
+func TestResponsesCustomToolMapping(t *testing.T) {
+	setupBridge(t)
+	resetSeen()
+	reqBody := map[string]any{
+		"model":  "glm-5.3-flash",
+		"stream": true,
+		"input": []any{
+			map[string]any{"type": "message", "role": "user", "content": "cuaca?"},
+			map[string]any{"type": "function_call", "call_id": "call_prev", "name": "get_weather", "arguments": `{"city":"Bandung"}`},
+			map[string]any{"type": "function_call_output", "call_id": "call_prev", "output": "rainy"},
+		},
+		"tools": []any{
+			map[string]any{"type": "custom", "name": "get_weather", "description": "weather probe"},
+		},
+	}
+	raw, _ := json.Marshal(reqBody)
+	req, _ := http.NewRequest("POST", bridgeURL()+"/v1/responses", bytes.NewReader(raw))
+	req.Header.Set("Content-Type", "application/json")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	body, _ := io.ReadAll(res.Body)
+	if res.StatusCode != 200 {
+		t.Fatalf("status %d: %s", res.StatusCode, body)
+	}
+	events := sseEvents(t, string(body))
+	var sawAdded, sawInputDone, sawItemDone bool
+	var finalItem map[string]any
+	for _, event := range events {
+		switch str(event["type"]) {
+		case "response.output_item.added":
+			item := event["item"].(map[string]any)
+			if item["type"] == "custom_tool_call" {
+				sawAdded = true
+			}
+		case "response.custom_tool_call_input.done":
+			if str(event["input"]) != `{"city":"Jakarta"}` {
+				t.Fatalf("custom input = %v", event["input"])
+			}
+			sawInputDone = true
+		case "response.output_item.done":
+			item := event["item"].(map[string]any)
+			if item["type"] == "custom_tool_call" {
+				sawItemDone = true
+				finalItem = item
+			}
+		}
+	}
+	if !sawAdded || !sawInputDone || !sawItemDone {
+		t.Fatalf("custom tool lifecycle incomplete: added=%v inputDone=%v itemDone=%v", sawAdded, sawInputDone, sawItemDone)
+	}
+	if finalItem["name"] != "get_weather" || finalItem["status"] != "completed" {
+		t.Fatalf("final custom item = %v", finalItem)
+	}
+	// The history must have reached upstream as a tool_result block.
+	seen.mu.Lock()
+	defer seen.mu.Unlock()
+	wire, _ := json.Marshal(seen.anthropic)
+	if !strings.Contains(string(wire), "tool_result") {
+		t.Fatalf("history not translated: %v", seen.anthropic["messages"])
+	}
+}

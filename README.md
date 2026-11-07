@@ -83,6 +83,7 @@ curl -s http://127.0.0.1:20131/v1/chat/completions \
 |---|---|---|
 | `POST /v1/messages` | Anthropic | pass-through into the plan lane |
 | `POST /v1/chat/completions` | OpenAI | translated both ways, incl. streaming + tools |
+| `POST /v1/responses` | OpenAI Responses | Codex CLI (`wire_api = "responses"`): input/instructions/tools mapped onto the Anthropic layer, full Responses SSE lifecycle |
 | `GET /v1/models` | — | live entitlements merged across plans (static fallback when billing is down) |
 | `GET /v1/quota` | — | per-entitlement grant rows (balance-first) |
 | `GET /dashboard` | — | built-in status page: lane, credentials, quota, request inspector (no token needed) |
@@ -211,7 +212,29 @@ Changes made in this fork, relative to upstream `azrinaldi/zcode-bridge`:
    from Task Scheduler.
 3. **Hardened `.gitignore`** — never commit `data/`, `plan-jwt.json`, `logs/`,
    binaries, or `*.bak-*` backups.
-4. **Built-in request inspector** (idea from
+5. **Responses API for Codex CLI** (wire format documented by
+   [TriDefender/zcode-api](https://github.com/TriDefender/zcode-api)):
+   `POST /v1/responses` accepts `model`, `input` (string or item array),
+   `instructions`, `tools`, `tool_choice`, `max_output_tokens`, `temperature`,
+   `top_p`, `stream`. The request is converted to the chat shape and then goes
+   through the one Anthropic translation layer; `input[]` history (messages,
+   `function_call`, `function_call_output`, `custom_tool_call`) is rebuilt with
+   the assistant-tool_calls -> tool-reply pairing the API requires. Tools:
+   `function` keeps its schema, Codex's `custom` tools (`exec`, `apply_patch`)
+   downgrade to a function taking `{"input": string}` and come back as
+   `custom_tool_call` items, `namespace` tools flatten to `{ns}__{name}` and are
+   restored, hosted tools are dropped. Streaming emits
+   `response.created` -> `output_item.added` -> `content_part.added` ->
+   `output_text.delta`* -> `output_text.done` -> `content_part.done` ->
+   `output_item.done` -> `response.completed` (tool and reasoning items get
+   `function_call_arguments.done` / summary events before their
+   `output_item.done`, because Codex wedges a turn without them); no response is
+   buffered. Non-streaming returns one `response` object with `output_text`,
+   `output[]` and `usage`. Codex config:
+   `wire_api = "responses"`, `base_url = "http://127.0.0.1:20131/v1"`.
+   Files: `internal/models/responses.go`,
+   `internal/models/responses_stream.go`, `internal/server/responses.go`.
+6. **Built-in request inspector** (idea from
    [TheHolyOneZ/ZProxy](https://github.com/TheHolyOneZ/ZProxy), but no MITM):
    the bridge already terminates both legs, so it records the exchange it
    forwards — method, path, route, model, serving account, request/response

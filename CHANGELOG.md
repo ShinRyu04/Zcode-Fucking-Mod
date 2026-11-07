@@ -19,6 +19,13 @@ versions follow [SemVer](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- `POST /v1/responses`: OpenAI Responses wire format for Codex CLI
+  (`wire_api = "responses"`). Requests reuse the chat -> Anthropic translation;
+  replies are rendered as Responses output items for both non-streaming and
+  the streaming event lifecycle (created, output_item/content_part added,
+  output_text deltas/done, function-call argument deltas, item done,
+  completed). Custom (`exec`, `apply_patch`) and namespace tools are
+  downgraded upstream and restored in the reply; hosted tools are dropped.
 - Request inspector: opt-in capture ring (`ZCODE_CAPTURE=1`,
   `ZCODE_CAPTURE_SIZE`, `ZCODE_CAPTURE_BODY_MAX`) recording every inference
   exchange with account attribution, upstream attempt/rotation events,

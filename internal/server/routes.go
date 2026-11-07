@@ -62,13 +62,15 @@ func route(w http.ResponseWriter, r *http.Request) {
 		requireAuth(w, r, "openai", func() {
 			handlePost(w, r, accountID, handleChatCompletions)
 		})
+	case r.Method == http.MethodPost && pathName == "/v1/responses":
+		requireAuth(w, r, "openai", func() {
+			handlePost(w, r, accountID, handleResponses)
+		})
 	default:
 		anthropicError(w, 404, fmt.Sprintf("No route for %s %s", r.Method, r.URL.Path), "not_found_error")
 	}
 }
 
-// requireAuth gates inference routes; read-only observability routes stay
-// open so localhost dashboards work without the token.
 // requireObservabilityToken gates routes that expose captured traffic or usage
 // aggregates: ZCODE_BRIDGE_TOKEN when set, otherwise open on loopback (same
 // rule the /dashboard page itself follows).
