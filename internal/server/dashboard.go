@@ -104,7 +104,16 @@ pre{background:#0f131b;border:1px solid var(--line);border-radius:8px;padding:12
 .legend span{display:inline-flex;align-items:center;gap:5px}
 .swatch{display:inline-block;width:8px;height:8px;border-radius:2px}
 .split{display:grid;grid-template-columns:1.1fr .9fr;gap:20px;align-items:start}
+.gauges{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-bottom:6px}
+.gauge{background:#0f131b;border:1px solid var(--line);border-radius:10px;padding:12px 10px 10px}
+.gauge svg{display:block;width:100%;max-width:180px;margin:0 auto}
+.gauge .gval{fill:var(--fg);font-size:24px;font-weight:800;font-variant-numeric:tabular-nums}
+.gauge .gsub{fill:var(--dim);font-size:8px;letter-spacing:.06em;text-transform:uppercase}
+.gcap{text-align:center;margin-top:4px}
+.gcap b{display:block;font-size:12px;font-weight:600}
+.gcap span{display:block;font-size:11px;color:var(--dim);overflow-wrap:anywhere}
 @media (max-width:760px){.split{grid-template-columns:1fr}}
+@media (max-width:640px){.gauges{grid-template-columns:1fr 1fr}}
 @media (prefers-reduced-motion:reduce){.fill{transition:none}}
 @media (max-width:760px){.cols{grid-template-columns:1fr}.toolbtns{margin-left:0;width:100%}.toolbtns .btn,.toolbtns button{flex:1 1 auto;text-align:center}}
 @media (max-width:560px){.big{font-size:26px}.card{padding:16px}th,td{white-space:normal;overflow-wrap:anywhere}td.path{max-width:none}}
@@ -121,6 +130,7 @@ pre{background:#0f131b;border:1px solid var(--line);border-radius:8px;padding:12
 <button role="tab" id="tab-status" aria-controls="panel-status" aria-selected="true" data-panel="panel-status">Status</button>
 <button role="tab" id="tab-inspector" aria-controls="panel-inspector" aria-selected="false" data-panel="panel-inspector">Inspector</button>
 <button role="tab" id="tab-usage" aria-controls="panel-usage" aria-selected="false" data-panel="panel-usage">Penggunaan</button>
+<button role="tab" id="tab-playground" aria-controls="panel-playground" aria-selected="false" data-panel="panel-playground">Playground</button>
 </div>
 
 <main>
@@ -178,19 +188,32 @@ pre{background:#0f131b;border:1px solid var(--line);border-radius:8px;padding:12
 <section id="panel-usage" role="tabpanel" aria-labelledby="tab-usage" hidden>
 <div class="card" aria-label="Penggunaan token dan kecepatan">
 <h2>Penggunaan <span class="dim" id="ustate" style="text-transform:none;letter-spacing:0;font-weight:400"></span></h2>
-<div class="split">
-<div class="kv" id="utotals"><span>Memuat...</span></div>
-<div>
-<span class="qnote">Rata-rata kecepatan generasi hari ini</span>
-<div class="big" id="utps">-<small> tok/dtk</small></div>
-<p class="note" id="utpsnote">Dihitung dari token upstream dibagi waktu token pertama sampai selesai, bukan tebakan byte.</p>
-</div>
-</div>
+<div class="gauges" id="uga"></div>
+<h3>Hari ini</h3>
+<div class="meta" id="utotals"></div>
+<h3>Semua waktu</h3>
 <div class="meta" id="ualltime"></div>
+<h3>Kecepatan 15 menit terakhir <span class="dim" style="text-transform:none;letter-spacing:0;font-weight:400">· 10 detik per titik</span></h3>
+<div id="uroll"></div>
 <h3>Kecepatan per permintaan terakhir</h3>
 <div id="uchart"></div>
 <h3>Per model</h3>
 <div id="utable" class="tablewrap" aria-live="polite"></div>
+</div>
+</section>
+
+<section id="panel-playground" role="tabpanel" aria-labelledby="tab-playground" hidden>
+<div class="card" aria-label="Playground chat">
+<h2>Playground <span class="dim" id="pstate" style="text-transform:none;letter-spacing:0;font-weight:400">uji model langsung dari dashboard</span></h2>
+<div class="toolbar">
+<label class="field"><span>Model</span><input type="search" id="pmodel" value="glm-5.3-flash" autocomplete="off" spellcheck="false"></label>
+<label class="field grow"><span>Pesan</span><input type="search" id="pmsg" placeholder="tulis prompt, Enter untuk kirim" autocomplete="off"></label>
+<label><input type="checkbox" id="pstream" checked> stream</label>
+<div class="toolbtns"><button type="button" id="psend">Kirim</button></div>
+</div>
+<div id="pout" class="card" style="margin:0;background:#0f131b"><p class="note">Balasan muncul di sini; kalau model mengirim thinking, ia tampil di panel reasoning.</p></div>
+<div class="meta" id="pmeta"></div>
+<p class="note">Lewat jalur yang sama dengan klien lain: plan lane, 3 blok identitas, id model huruf kecil. Token tidak disimpan.</p>
 </div>
 </section>
 </main>
@@ -198,6 +221,7 @@ pre{background:#0f131b;border:1px solid var(--line);border-radius:8px;padding:12
 <footer>
 <div class="controls">
 <button type="button" id="refresh">Muat ulang</button>
+<a class="btn" href="/overlay" target="_blank" rel="noopener">Overlay t/s</a>
 <label><input type="checkbox" id="auto" checked> auto 15 dtk</label>
 </div>
 <div><span id="stamp">-</span><span id="ver" class="dim"></span></div>
@@ -522,13 +546,8 @@ function tpsColor(v){
   if(v < 320) return '#f87171';
   return '#e879f9';
 }
-function tpsClass(v){
-  if(v < 40) return 'ok';
-  if(v < 80) return '';
-  if(v < 160) return 'warn';
-  return 'bad';
-}
 function fmtTps(v){ return (Number(v)||0).toFixed(1); }
+function fmtN(n){ n = Number(n) || 0; return n < 10000 ? n.toLocaleString('id-ID') : fmt(n); }
 function renderUsageChart(recent){
   var rows = (recent || []).filter(function(r){ return Number(r.tps) > 0; }).slice(-60);
   if(!rows.length){
@@ -554,27 +573,84 @@ function renderUsageChart(recent){
   return '<div class="chartwrap"><svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Kecepatan generasi ' + rows.length + ' permintaan terakhir" preserveAspectRatio="none">'
     + refY + bars + '</svg></div><div class="legend">' + legend + refNote + '</div>';
 }
+function gaugeCard(value, max, color, label, display, unit, sub){
+  var r = 52, c = 2 * Math.PI * r, arc = c * 2 / 3;
+  var frac = max > 0 ? Math.min(1, Math.max(0, value / max)) : 0;
+  return '<div class="gauge"><svg viewBox="0 0 120 120" role="img" aria-label="' + esc(label + ' ' + display + ' ' + unit) + '">'
+    + '<circle cx="60" cy="60" r="' + r + '" fill="none" stroke="#1c222e" stroke-width="10" stroke-linecap="round" stroke-dasharray="' + arc.toFixed(1) + ' ' + c.toFixed(1) + '" transform="rotate(150 60 60)"/>'
+    + '<circle cx="60" cy="60" r="' + r + '" fill="none" stroke="' + color + '" stroke-width="10" stroke-linecap="round" stroke-dasharray="' + (frac * arc).toFixed(1) + ' ' + c.toFixed(1) + '" transform="rotate(150 60 60)"/>'
+    + '<text x="60" y="61" text-anchor="middle" class="gval">' + esc(display) + '</text>'
+    + '<text x="60" y="77" text-anchor="middle" class="gsub">' + esc(unit) + '</text></svg>'
+    + '<div class="gcap"><b>' + esc(label) + '</b><span>' + esc(sub) + '</span></div></div>';
+}
+function cacheRate(today){
+  var cached = Number(today.cache_read_tokens) || 0;
+  var fresh = Number(today.input_tokens) || 0;
+  var total = cached + fresh;
+  return total ? cached / total * 100 : 0;
+}
+function renderRolling(recent){
+  var span = 15 * 60 * 1000, step = 10 * 1000, n = 90, nowMs = Date.now();
+  var buckets = [], i;
+  for(i = 0; i < n; i++) buckets.push({out: 0, ms: 0});
+  (recent || []).forEach(function(row){
+    var t = new Date(row.at).getTime();
+    if(isNaN(t)) return;
+    var age = nowMs - t;
+    if(age < 0 || age >= span) return;
+    var idx = n - 1 - Math.floor(age / step);
+    if(idx < 0 || idx >= n) return;
+    if(Number(row.tps) > 0){
+      buckets[idx].out += Number(row.output_tokens) || 0;
+      buckets[idx].ms += Number(row.gen_ms) || 0;
+    }
+  });
+  var vals = buckets.map(function(b){ return b.ms > 0 ? b.out / b.ms * 1000 : 0; });
+  var peak = vals.reduce(function(a, b){ return b > a ? b : a; }, 0);
+  if(peak <= 0) return '<div class="emptystate">Belum ada permintaan streaming dalam 15 menit terakhir.</div>';
+  var yMax = Math.max(60, Math.ceil(peak / 60) * 60), W = 600, H = 130;
+  var line = vals.map(function(v, i){
+    return (i ? 'L' : 'M') + (i / (n - 1) * W).toFixed(1) + ' ' + (H - v / yMax * H).toFixed(1);
+  }).join(' ');
+  var grid = [0.25, 0.5, 0.75].map(function(f){
+    var y = (H - f * H).toFixed(1);
+    return '<line x1="0" y1="' + y + '" x2="' + W + '" y2="' + y + '" stroke="#1c222e" vector-effect="non-scaling-stroke"/>';
+  }).join('');
+  return '<div class="chartwrap"><svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Kecepatan generasi 15 menit terakhir" preserveAspectRatio="none">'
+    + grid + '<path d="' + line + ' L' + W + ' ' + H + ' L0 ' + H + ' Z" fill="rgba(52,211,153,.12)"/>'
+    + '<path d="' + line + '" fill="none" stroke="#34d399" stroke-width="1.6" vector-effect="non-scaling-stroke"/></svg></div>'
+    + '<div class="legend"><span>puncak ' + fmtTps(peak) + ' tok/dtk</span><span class="dim">skala 0-' + yMax + ' tok/dtk</span></div>';
+}
 function renderUsage(res){
   var today = res.today || {}, allTime = res.all_time || {};
   byId('ustate').textContent = today.requests ? today.requests + ' permintaan hari ini' : '';
+  var last = null;
+  (res.recent || []).forEach(function(row){ if(Number(row.tps) > 0) last = row; });
+  var avg = Number(today.avg_tps) || 0;
+  var hit = cacheRate(today);
+  byId('uga').innerHTML =
+    gaugeCard(last ? Number(last.tps) : 0, Math.max(120, Math.ceil((last ? Number(last.tps) : 0) / 40) * 40), tpsColor(last ? Number(last.tps) : 0),
+      'Kecepatan terakhir', last ? fmtTps(last.tps) : '-', 'tok/dtk', last ? last.model + ' · ' + whenISO(last.at) : 'belum ada stream')
+    + gaugeCard(avg, Math.max(80, Math.ceil(avg / 40) * 40), tpsColor(avg),
+      'Rata-rata hari ini', fmtTps(avg), 'tok/dtk', (today.requests || 0) + ' permintaan · hanya streaming')
+    + gaugeCard(hit, 100, '#34d399', 'Cache hit hari ini', hit.toFixed(1) + '%', 'dari token masuk',
+      fmtN(today.cache_read_tokens) + ' dari ' + fmtN((Number(today.cache_read_tokens) || 0) + (Number(today.input_tokens) || 0)));
   var totals = [
-    ['Permintaan', today.requests || 0],
-    ['Token masuk', fmt(today.input_tokens)],
-    ['Token keluar', fmt(today.output_tokens)],
-    ['Cache dibaca', fmt(today.cache_read_tokens)]
+    ['Permintaan', fmtN(today.requests)],
+    ['Token masuk', fmtN(today.input_tokens)],
+    ['Token keluar', fmtN(today.output_tokens)],
+    ['Cache dibaca', fmtN(today.cache_read_tokens)]
   ].map(function(t){ return '<div><span>' + t[0] + '</span><b>' + t[1] + '</b></div>'; }).join('');
   if(today.requests) totals += '<div><span>Rata-rata tok/dtk</span><b>' + fmtTps(today.avg_tps) + '</b></div>';
   byId('utotals').innerHTML = totals;
-  byId('utps').innerHTML = fmtTps(today.avg_tps) + '<small> tok/dtk</small>';
-  byId('utpsnote').textContent = today.requests
-    ? 'Dari ' + today.requests + ' permintaan hari ini; hanya permintaan streaming yang punya waktu token pertama yang dihitung.'
-    : 'Belum ada permintaan hari ini.';
   byId('ualltime').innerHTML = [
-    ['Total permintaan', fmt(allTime.requests || 0)],
-    ['Token masuk', fmt(allTime.input_tokens)],
-    ['Token keluar', fmt(allTime.output_tokens)],
+    ['Total permintaan', fmtN(allTime.requests || 0)],
+    ['Token masuk', fmtN(allTime.input_tokens)],
+    ['Token keluar', fmtN(allTime.output_tokens)],
+    ['Cache dibaca', fmtN(allTime.cache_read_tokens)],
     ['Rata-rata tok/dtk', fmtTps(allTime.avg_tps)]
   ].map(function(t){ return '<div><span>' + t[0] + '</span><b>' + t[1] + '</b></div>'; }).join('');
+  byId('uroll').innerHTML = renderRolling(res.recent);
   byId('uchart').innerHTML = renderUsageChart(res.recent);
   var models = today.per_model || {};
   var names = Object.keys(models).sort(function(a, b){ return models[b].requests - models[a].requests; });
@@ -586,10 +662,10 @@ function renderUsage(res){
   var rows = names.map(function(name){
     var m = models[name];
     return '<tr><td class="mono">' + esc(name) + '</td>'
-      + '<td class="num">' + fmt(m.requests) + '</td>'
-      + '<td class="num">' + fmt(m.input_tokens) + '</td>'
-      + '<td class="num">' + fmt(m.output_tokens) + '</td>'
-      + '<td class="num">' + fmt(m.cache_read_tokens) + '</td>'
+      + '<td class="num">' + fmtN(m.requests) + '</td>'
+      + '<td class="num">' + fmtN(m.input_tokens) + '</td>'
+      + '<td class="num">' + fmtN(m.output_tokens) + '</td>'
+      + '<td class="num">' + fmtN(m.cache_read_tokens) + '</td>'
       + '<td class="num">' + fmtTps(m.avg_tps) + '</td></tr>';
   }).join('');
   byId('utable').innerHTML = head + rows + '</tbody></table>';
@@ -602,6 +678,81 @@ function loadUsage(){
     if(!USAGE.loaded) byId('utable').innerHTML = '<div class="emptystate">Gagal memuat /v1/usage.</div>';
   });
 }
+
+// ---- playground ----
+var PM = { busy:false };
+function pRender(text, reasoning){
+  var html = '<pre style="max-height:360px">' + (text ? esc(text) : '<span class="dim">(kosong)</span>') + '</pre>';
+  if(reasoning) html += '<details class="dim" style="margin-top:8px"><summary>reasoning</summary><pre style="max-height:220px">' + esc(reasoning) + '</pre></details>';
+  byId('pout').innerHTML = html;
+}
+function pMeta(pairs){
+  byId('pmeta').innerHTML = pairs.map(function(p){ return '<div><span>' + esc(p[0]) + '</span><b>' + esc(p[1]) + '</b></div>'; }).join('');
+}
+function pSend(){
+  if(PM.busy) return;
+  var model = (byId('pmodel').value || '').trim();
+  var msg = (byId('pmsg').value || '').trim();
+  if(!model || !msg) return;
+  var stream = byId('pstream').checked;
+  PM.busy = true; byId('psend').disabled = true;
+  byId('pout').innerHTML = '<p class="note">menunggu upstream…</p>';
+  byId('pmeta').innerHTML = '';
+  var started = performance.now(), text = '', reasoning = '';
+  var headers = {'content-type':'application/json'};
+  if(TOKEN) headers['Authorization'] = 'Bearer ' + TOKEN;
+  fetch('/v1/chat/completions', {
+    method: 'POST', headers: headers, cache: 'no-store',
+    body: JSON.stringify({model: model, stream: stream, messages: [{role: 'user', content: msg}]})
+  }).then(function(res){
+    if(res.status === 401){ showTokenAsk(); throw new Error('token diperlukan'); }
+    if(!res.ok){ return res.text().then(function(t){ throw new Error('HTTP ' + res.status + ' · ' + t.slice(0, 200)); }); }
+    var type = res.headers.get('content-type') || '';
+    if(stream && type.indexOf('text/event-stream') >= 0){
+      var reader = res.body.getReader(), dec = new TextDecoder(), buf = '';
+      var pump = function(){
+        return reader.read().then(function(chunk){
+          if(chunk.done){ pRender(text, reasoning); return; }
+          buf += dec.decode(chunk.value, {stream: true});
+          var idx;
+          while((idx = buf.indexOf('\n\n')) >= 0){
+            var frame = buf.slice(0, idx); buf = buf.slice(idx + 2);
+            frame.split('\n').forEach(function(line){
+              if(line.indexOf('data:') !== 0) return;
+              var payload = line.slice(5).trim();
+              if(!payload || payload === '[DONE]') return;
+              var event;
+              try { event = JSON.parse(payload); } catch(e) { return; }
+              var delta = event.choices && event.choices[0] && event.choices[0].delta;
+              if(!delta) return;
+              if(delta.reasoning_content) reasoning += delta.reasoning_content;
+              if(delta.content) text += delta.content;
+              pRender(text, reasoning);
+            });
+          }
+          return pump();
+        });
+      };
+      return pump().then(function(){
+        pMeta([['Model', model], ['Karakter', fmt(text.length)], ['Latensi', Math.round(performance.now() - started) + ' ms'], ['Mode', 'stream']]);
+      });
+    }
+    return res.json().then(function(body){
+      var choice = (body.choices && body.choices[0]) || {};
+      var m = choice.message || {};
+      pRender(m.content || '', m.reasoning_content || '');
+      var u = body.usage || {};
+      pMeta([['Model', body.model || model], ['Masuk', fmt(u.prompt_tokens)], ['Keluar', fmt(u.completion_tokens)],
+        ['Latensi', Math.round(performance.now() - started) + ' ms'], ['Selesai', choice.finish_reason || '-']]);
+    });
+  }).catch(function(err){
+    byId('pout').innerHTML = '<p class="note" style="color:var(--bad)">' + esc(err.message || err) + '</p>';
+  }).then(function(){
+    PM.busy = false; byId('psend').disabled = false;
+  });
+}
+byId('psend').addEventListener('click', pSend);
+byId('pmsg').addEventListener('keydown', function(ev){ if(ev.key === 'Enter'){ ev.preventDefault(); pSend(); } });
 
 // ---- tabs ----
 var activeTab = 'panel-status';
@@ -627,6 +778,7 @@ function selectTab(panel, address){
     loadUsage();
     if(!usageTimer) usageTimer = setInterval(function(){ if(activeTab==='panel-usage' && byId('auto').checked) loadUsage(); }, 5000);
   } else if(usageTimer){ clearInterval(usageTimer); usageTimer = null; }
+  if(panel === 'panel-playground' && byId('pmsg')) byId('pmsg').focus();
 }
 var initialHash = (window.location.hash || '').replace('#','');
 if(initialHash && byId('panel-' + initialHash)) selectTab('panel-' + initialHash, false);

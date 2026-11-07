@@ -25,8 +25,10 @@ const (
 	DefaultDir = "data"
 	// maxBootLines caps the startup scan.
 	maxBootLines = 10000
-	// recentLimit is how many rows the sparkline can draw.
-	recentLimit = 200
+	// recentLimit is how many rows the dashboard can draw. It has to cover a
+	// 15-minute rolling window at plan-lane rates (a few requests/second
+	// during bursts), not just the last 60 bars.
+	recentLimit = 2000
 	// tailBytes bounds one file read during the startup scan.
 	tailBytes = 4 << 20
 )

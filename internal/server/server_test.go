@@ -325,7 +325,8 @@ func TestDashboardServesStatusPage(t *testing.T) {
 	page := string(raw)
 	for _, want := range []string{"zcode-bridge", "/health", "/quota", "id=\"health\"", "id=\"quota\"",
 		"Inspector", "id=\"panel-inspector\"", "/inspect?limit=200",
-		"Penggunaan", "id=\"panel-usage\"", "renderUsageChart", "/v1/usage"} {
+		"Penggunaan", "id=\"panel-usage\"", "renderUsageChart", "/v1/usage",
+		"Playground", "id=\"panel-playground\"", "gaugeCard", "renderRolling", "/overlay"} {
 		if !strings.Contains(page, want) {
 			t.Fatalf("dashboard page missing %q", want)
 		}
@@ -1074,5 +1075,25 @@ func TestUsageEndpointTokenGate(t *testing.T) {
 	defer res.Body.Close()
 	if res.StatusCode != 200 {
 		t.Fatalf("authenticated usage = %d", res.StatusCode)
+	}
+}
+
+func TestOverlayServesSpeedReadout(t *testing.T) {
+	setupBridge(t)
+	usage.ResetForTest(t.TempDir())
+	res, err := http.Get(bridgeURL() + "/overlay")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != 200 {
+		t.Fatalf("overlay status = %d", res.StatusCode)
+	}
+	raw, _ := io.ReadAll(res.Body)
+	page := string(raw)
+	for _, want := range []string{"tok/dtk", "/v1/usage", "rata-rata hari ini"} {
+		if !strings.Contains(page, want) {
+			t.Fatalf("overlay page missing %q", want)
+		}
 	}
 }

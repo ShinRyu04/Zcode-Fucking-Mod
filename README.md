@@ -31,9 +31,13 @@ This fork adds, on top of upstream:
   already relays, redacts secrets, and shows them in the dashboard's
   **Inspector** tab (`ZCODE_CAPTURE=1` to enable).
 - Real throughput metering — tokens come from upstream usage blocks, not byte
-  estimates; today/all-time aggregates, per-model rows and a t/s chart live in
-  the dashboard's **Penggunaan** (usage) tab, backed by
-  `GET /v1/usage` and `data/usage-YYYYMMDD.jsonl`.
+  estimates; today/all-time aggregates, per-model rows, speed gauges and two
+  charts (15-minute rolling + per-request) live in the dashboard's
+  **Penggunaan** tab, backed by `GET /v1/usage` and
+  `data/usage-YYYYMMDD.jsonl`.
+- A compact **overlay** readout (`GET /overlay`) for a small always-on-top
+  window, and a **Playground** tab that sends real prompts through the same
+  lane so a model can be tested without leaving the dashboard.
 
 ## Install
 
@@ -98,7 +102,8 @@ curl -s http://127.0.0.1:20131/v1/chat/completions \
 | `POST /v1/responses` | OpenAI Responses | Codex CLI (`wire_api = "responses"`): input/instructions/tools mapped onto the Anthropic layer, full Responses SSE lifecycle |
 | `GET /v1/models` | — | live entitlements merged across plans (static fallback when billing is down) |
 | `GET /v1/quota` | — | per-entitlement grant rows (balance-first) |
-| `GET /dashboard` | — | built-in status page: lane, credentials, quota, plus **Inspector** and **Penggunaan** tabs (no token needed) |
+| `GET /dashboard` | — | built-in status page: lane, credentials, quota, plus **Inspector**, **Penggunaan** and **Playground** tabs (no token needed) |
+| `GET /overlay` | — | compact t/s readout page (current, today's average, tokens, sparkline) refreshed every second |
 | `GET /inspect?limit=N` | — | captured exchanges, newest first (summaries only) |
 | `GET /inspect?id=N` | — | one captured exchange with headers and bodies |
 | `GET /inspect?limit=N&full=1` | — | JSON export with bodies (≤50 entries) |
@@ -267,7 +272,7 @@ Changes made in this fork, relative to upstream `azrinaldi/zcode-bridge`:
    `internal/server/inspect.go`, `internal/server/dashboard.go`,
    `internal/transport` (attempt hooks).
 6. **Usage and throughput metering** (presentation borrowed from
-   [ShinRyu04/zcode-speed-panel](https://github.com/ShinRyu04/zcode-speed-panel),
+   [Masterchiefm/zcode-speed-panel](https://github.com/Masterchiefm/zcode-speed-panel),
    measurement redone): every request that reaches the upstream usage block is
    recorded with its model, serving account, input/output/cache-read tokens,
    first-token latency, generation time and tokens/second. Streaming requests
@@ -279,8 +284,35 @@ Changes made in this fork, relative to upstream `azrinaldi/zcode-bridge`:
    and the dashboard's **Penggunaan** tab: today vs all-time totals, a focal
    average t/s number, per-model table, and a 60-request chart with speed tiers
    (`<40`, `40-80`, `80-160`, `160-240`, `240-320`, `320+` tok/s) drawn as
-   inline SVG — no charts library, still stdlib only. Files:
-   `internal/usage`, `internal/server/usage.go`, `internal/server/dashboard.go`.
+   inline SVG — no charts library, still stdlib only. The panel's gauges are
+   reproduced natively (last request, today's average, cache-hit rate) along
+   with a 15-minute rolling chart at 10-second resolution and a per-request
+   tier chart; `GET /overlay` is the floating-widget equivalent (a small page
+   you can pin on top with any browser window). The panel's network/upload
+   counters are deliberately not ported: they read the desktop app's
+   `db.sqlite` and process IO counters, which the bridge cannot and should not
+   see. Files: `internal/usage`, `internal/server/usage.go`,
+   `internal/server/overlay.go`, `internal/server/dashboard.go`.
+7. **Dashboard playground**: a **Playground** tab posts a prompt to
+   `/v1/chat/completions` through the same lane (streaming or not), renders the
+   answer and the reasoning block, and reports model/latency/tokens. Useful to
+   verify a model id or a tool profile without wiring a client. File:
+   `internal/server/dashboard.go`.
+
+## Credits
+
+This fork is a combination of ideas from several public projects — the bridge
+base is [azrinaldi/zcode-bridge](https://github.com/azrinaldi/zcode-bridge), and
+the features above were ported (not vendored) from:
+
+| Project | What was taken |
+|---|---|
+| [TheHolyOneZ/ZProxy](https://github.com/TheHolyOneZ/ZProxy) | request/response inspector idea — re-done without MITM |
+| [TriDefender/zcode-api](https://github.com/TriDefender/zcode-api) | `POST /v1/responses` wire format for Codex CLI |
+| [Masterchiefm/zcode-speed-panel](https://github.com/Masterchiefm/zcode-speed-panel) | speed-panel presentation (gauges, tiers, rolling chart, floating readout) — measurement replaced by real usage-block math |
+
+No code is copied from those projects; everything is implemented in Go with the
+standard library only.
 
 ## License
 

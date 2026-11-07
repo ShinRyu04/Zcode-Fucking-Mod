@@ -46,6 +46,8 @@ func route(w http.ResponseWriter, r *http.Request) {
 		handleQuota(w, r, accountID)
 	case r.Method == http.MethodGet && pathName == "/dashboard":
 		handleDashboard(w)
+	case r.Method == http.MethodGet && pathName == "/overlay":
+		handleOverlay(w, r)
 	case r.Method == http.MethodGet && (pathName == "/inspect" || pathName == "/inspector"):
 		if requireObservabilityToken(w, r) {
 			handleInspect(w, r)
