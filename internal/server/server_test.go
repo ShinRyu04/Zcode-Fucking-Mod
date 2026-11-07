@@ -1333,12 +1333,12 @@ func TestOverlayServesSpeedReadout(t *testing.T) {
 	}
 	raw, _ := io.ReadAll(res.Body)
 	page := string(raw)
-	for _, want := range []string{"tok/dtk", "/v1/usage", "rata-rata hari ini", "data-mode=\"pet\"", "data-mode=\"capsule\"", "zbOverlayMode", "id=\"arc\""} {
+	for _, want := range []string{"tok/dtk", "/v1/usage", "rata-rata hari ini", "data-mode=\"capsule\"", "zbOverlayMode", "id=\"arc\""} {
 		if !strings.Contains(page, want) {
 			t.Fatalf("overlay page missing %q", want)
 		}
 	}
-	for _, path := range []string{"/overlay/gauge", "/overlay/mini", "/overlay/pet", "/overlay/capsule"} {
+	for _, path := range []string{"/overlay/gauge", "/overlay/mini", "/overlay/capsule"} {
 		res, err := http.Get(bridgeURL() + path)
 		if err != nil {
 			t.Fatalf("%s: %v", path, err)

@@ -18,6 +18,11 @@ versions follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Removed
+- The native companion pet window and the `/overlay/pet` presentation mode,
+  including their tray toggles and position file. The companion keeps the tray,
+  autostart, update check, and bridge supervision.
+
 ### Added
 - Local sharing board at `/dashboard#/sharing`: title, message, link, image
   attachment up to 120 KB, author name, one like toggle per browser, comments,

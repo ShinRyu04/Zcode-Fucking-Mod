@@ -37,7 +37,7 @@ Key features:
   IO/CPU counters (gated off when the app is not running) — plus a sticky
   status bar and per-module visibility settings that persist in the browser.
 - A compact **overlay** readout (`GET /overlay`) for a small always-on-top
-  window — card, mini gauge, pet or capsule, remembered per browser — and a
+  window — card, mini gauge or capsule, remembered per browser — and a
   **Playground** tab that sends real prompts through the same lane so a model
   can be tested without leaving the dashboard.
 - A console rewrite at `/dashboard`: an instrument-style SPA (hash router,
@@ -56,10 +56,6 @@ Key features:
   model picker from `/v1/models`, streaming `/v1/chat/completions` with stop
   and regenerate, temperature/max-token controls, import/export and escaped
   Markdown rendering.
-- A **native pet window** in the companion: a click-through, always-on-top
-  layered window drawn per pixel (no browser, no asset files) whose mood
-  follows `/v1/usage` (offline / sleep / idle / thinking / happy / turbo), with
-  remembered position and tray toggles for visibility and click-through.
 - A **terminal panel** (`zcode-bridge tui`): live usage/rings and network
   panes on a raw ANSI console, keys `1`/`2` switch pane, `r` refreshes, `q`
   quits; no TUI library.
@@ -130,39 +126,7 @@ started). It spawns `zcode-bridge.exe` from its own directory whenever
 `/health` stops answering and restarts it after a crash; a bridge started
 externally (e.g. Task Scheduler) is left alone until it disappears.
 
-### Pet window
-
-The tray also owns the native pet: a 190x190 layered window drawn per pixel
-(no browser, no PNG assets) that floats above the ZCode desktop app and never
-takes focus.
-
-1. Build both binaries: `go build -o zcode-bridge.exe ./cmd/zcode-bridge`
-   and `go build -o zcode-companion.exe ./cmd/zcode-companion`.
-2. Start it with `companion.cmd` (sets `PORT=20135`, same as
-   `start-bridge.cmd`) or run `zcode-companion.exe` from the repo directory.
-   The pet appears near the bottom-right corner of the work area.
-3. Open the tray icon: `Pet: tampilkan` hides/shows it, `Pet: klik-tembus`
-   toggles whether clicks pass through to the app underneath. With
-   click-through off, drag the pet to move it; the position is remembered in
-   `%APPDATA%\zcode-companion\pet.json`. `Keluar` quits the companion and
-   removes the pet.
-
-Mood follows the last `/v1/usage` sample, polled every two seconds:
-
-| state | trigger | look |
-|---|---|---|
-| turbo | request in the last 20 s, >= 80 t/s | emerald, bouncing, smile |
-| happy | request in the last 20 s with t/s | emerald, gentle bob, smile |
-| thinking | request in the last 20 s, no t/s yet | amber, eyes up, dots |
-| idle | last request < 150 s ago | emerald, calm, blinking |
-| sleep | no request for 150 s | grey, eyes closed |
-| offline | `/v1/usage` unreachable twice in a row | grey, red badge |
-
-When `ZCODE_BRIDGE_TOKEN` is set, the companion sends it as a Bearer token to
-`/v1/usage`. The window is DPI-aware, so its position stays correct on scaled
-(125%/150%) displays.
-
-Headless controls, useful for scripts and verification:
+### Headless controls
 
 ```sh
 zcode-companion.exe -diagnose          # paths, URL, health, autostart state

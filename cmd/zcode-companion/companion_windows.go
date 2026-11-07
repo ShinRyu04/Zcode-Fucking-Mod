@@ -24,33 +24,35 @@ var (
 	gdi32    = syscall.NewLazyDLL("gdi32.dll")
 	advapi32 = syscall.NewLazyDLL("advapi32.dll")
 
-	procGetModuleHandleW   = kernel32.NewProc("GetModuleHandleW")
-	procCreateMutexW       = kernel32.NewProc("CreateMutexW")
-	procRegisterClassExW   = user32.NewProc("RegisterClassExW")
-	procCreateWindowExW    = user32.NewProc("CreateWindowExW")
-	procDefWindowProcW     = user32.NewProc("DefWindowProcW")
-	procGetMessageW        = user32.NewProc("GetMessageW")
-	procTranslateMessage   = user32.NewProc("TranslateMessage")
-	procDispatchMessageW   = user32.NewProc("DispatchMessageW")
-	procPostQuitMessage    = user32.NewProc("PostQuitMessage")
-	procDestroyWindow      = user32.NewProc("DestroyWindow")
-	procCreatePopupMenu    = user32.NewProc("CreatePopupMenu")
-	procAppendMenuW        = user32.NewProc("AppendMenuW")
-	procTrackPopupMenu     = user32.NewProc("TrackPopupMenu")
-	procDestroyMenu        = user32.NewProc("DestroyMenu")
-	procGetCursorPos       = user32.NewProc("GetCursorPos")
-	procSetForegroundWnd   = user32.NewProc("SetForegroundWindow")
-	procPostMessageW       = user32.NewProc("PostMessageW")
-	procMessageBoxW        = user32.NewProc("MessageBoxW")
-	procLoadIconW          = user32.NewProc("LoadIconW")
-	procGetDC              = user32.NewProc("GetDC")
-	procReleaseDC          = user32.NewProc("ReleaseDC")
-	procCreateDIBitmap     = gdi32.NewProc("CreateDIBitmap")
-	procCreateBitmap       = gdi32.NewProc("CreateBitmap")
-	procCreateIconIndirect = user32.NewProc("CreateIconIndirect")
-	procDeleteObject       = gdi32.NewProc("DeleteObject")
-	procShellExecuteW      = shell32.NewProc("ShellExecuteW")
-	procShellNotifyIconW   = shell32.NewProc("Shell_NotifyIconW")
+	procGetModuleHandleW              = kernel32.NewProc("GetModuleHandleW")
+	procCreateMutexW                  = kernel32.NewProc("CreateMutexW")
+	procRegisterClassExW              = user32.NewProc("RegisterClassExW")
+	procCreateWindowExW               = user32.NewProc("CreateWindowExW")
+	procDefWindowProcW                = user32.NewProc("DefWindowProcW")
+	procGetMessageW                   = user32.NewProc("GetMessageW")
+	procTranslateMessage              = user32.NewProc("TranslateMessage")
+	procDispatchMessageW              = user32.NewProc("DispatchMessageW")
+	procPostQuitMessage               = user32.NewProc("PostQuitMessage")
+	procDestroyWindow                 = user32.NewProc("DestroyWindow")
+	procCreatePopupMenu               = user32.NewProc("CreatePopupMenu")
+	procAppendMenuW                   = user32.NewProc("AppendMenuW")
+	procTrackPopupMenu                = user32.NewProc("TrackPopupMenu")
+	procDestroyMenu                   = user32.NewProc("DestroyMenu")
+	procGetCursorPos                  = user32.NewProc("GetCursorPos")
+	procSetForegroundWnd              = user32.NewProc("SetForegroundWindow")
+	procPostMessageW                  = user32.NewProc("PostMessageW")
+	procMessageBoxW                   = user32.NewProc("MessageBoxW")
+	procLoadIconW                     = user32.NewProc("LoadIconW")
+	procGetDC                         = user32.NewProc("GetDC")
+	procReleaseDC                     = user32.NewProc("ReleaseDC")
+	procCreateDIBitmap                = gdi32.NewProc("CreateDIBitmap")
+	procCreateBitmap                  = gdi32.NewProc("CreateBitmap")
+	procCreateIconIndirect            = user32.NewProc("CreateIconIndirect")
+	procDeleteObject                  = gdi32.NewProc("DeleteObject")
+	procShellExecuteW                 = shell32.NewProc("ShellExecuteW")
+	procShellNotifyIconW              = shell32.NewProc("Shell_NotifyIconW")
+	procSetProcessDpiAwarenessContext = user32.NewProc("SetProcessDpiAwarenessContext")
+	procSetProcessDPIAware            = user32.NewProc("SetProcessDPIAware")
 )
 
 const (
@@ -163,8 +165,8 @@ const (
 )
 
 var (
-	menuIDs = struct{ dashboard, overlay, autostart, update, restart, quit, petShow, petClick uintptr }{
-		1, 2, 3, 4, 5, 6, 7, 8,
+	menuIDs = struct{ dashboard, overlay, autostart, update, restart, quit uintptr }{
+		1, 2, 3, 4, 5, 6,
 	}
 	companionHWnd uintptr
 	companionIcon uintptr
@@ -178,6 +180,15 @@ func utf16Ptr(s string) *uint16 {
 		return nil
 	}
 	return p
+}
+
+func enableDPIAwareness() {
+	// Per-monitor aware v2 (context -4) keeps Win32 coordinates in physical
+	// pixels on scaled displays.
+	if ret, _, _ := procSetProcessDpiAwarenessContext.Call(^uintptr(3)); ret != 0 {
+		return
+	}
+	procSetProcessDPIAware.Call()
 }
 
 func bridgePort() string {
@@ -437,8 +448,6 @@ func runTray() error {
 		return fmt.Errorf("Shell_NotifyIcon: %v", err)
 	}
 	defer procShellNotifyIconW.Call(nimDelete, uintptr(unsafe.Pointer(&nid)))
-	_ = startPet()
-	defer stopPet()
 
 	go func() {
 		for !quitRequested {
@@ -497,16 +506,6 @@ func showTrayMenu(hwnd uintptr) {
 	defer procDestroyMenu.Call(hMenu)
 	appendItem(hMenu, menuIDs.dashboard, "Buka dashboard")
 	appendItem(hMenu, menuIDs.overlay, "Overlay kapsul")
-	petShowFlags := uintptr(mfString)
-	if petShown() {
-		petShowFlags |= mfChecked
-	}
-	procAppendMenuW.Call(hMenu, petShowFlags, menuIDs.petShow, uintptr(unsafe.Pointer(utf16Ptr("Pet: tampilkan"))))
-	petClickFlags := uintptr(mfString)
-	if petThrough() {
-		petClickFlags |= mfChecked
-	}
-	procAppendMenuW.Call(hMenu, petClickFlags, menuIDs.petClick, uintptr(unsafe.Pointer(utf16Ptr("Pet: klik-tembus"))))
 	procAppendMenuW.Call(hMenu, mfSeparator, 0, 0)
 	autoFlags := uintptr(mfString)
 	if on, err := autostartState(); err == nil && on {
@@ -561,13 +560,8 @@ func handleCommand(id uint32) {
 		sup.restart()
 	case 6:
 		quitRequested = true
-		stopPet()
 		sup.stop()
 		procDestroyWindow.Call(companionHWnd)
-	case 7:
-		petToggleVisible()
-	case 8:
-		petToggleClickThrough()
 	}
 }
 

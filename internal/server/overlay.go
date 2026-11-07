@@ -5,8 +5,8 @@ import (
 )
 
 // handleOverlay serves the compact always-on-top readout: current and average
-// generation speed plus today's totals. One page carries four presentation
-// modes — card, mini gauge, pet and capsule — so the floating window can be
+// generation speed plus today's totals. One page carries three presentation
+// modes — card, mini gauge and capsule — so the floating window can be
 // resized without another build. `/overlay/{mode}` pre-selects a mode, while
 // the browser remembers the last choice in localStorage.
 func handleOverlay(w http.ResponseWriter, r *http.Request) {
@@ -42,7 +42,6 @@ svg.spark{display:block;width:100%;height:44px;margin-top:8px}
 .mode{display:none}
 body[data-mode=card] .mode.card{display:block}
 body[data-mode=gauge] .mode.gauge{display:flex}
-body[data-mode=pet] .mode.pet{display:flex}
 body[data-mode=capsule] .mode.capsule{display:flex}
 .gauge .dial{position:relative;width:132px;height:132px;flex:none}
 .gauge .dial svg{display:block;width:132px;height:132px;transform:rotate(-90deg)}
@@ -51,14 +50,6 @@ body[data-mode=capsule] .mode.capsule{display:flex}
 .gauge .dial .mid small{color:var(--dim);font-size:10px;text-transform:uppercase;letter-spacing:.08em}
 .gauge .side{display:flex;flex-direction:column;justify-content:center;gap:6px;min-width:0}
 .gauge{align-items:center;gap:14px}
-.pet{align-items:center;gap:12px}
-.pet .blob{width:74px;height:74px;flex:none}
-.pet .blob svg{display:block;width:74px;height:74px;animation:bob 2.4s ease-in-out infinite}
-@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
-@keyframes blink{0%,92%,100%{transform:scaleY(1)}96%{transform:scaleY(.1)}}
-.pet .eyes{animation:blink 4.2s infinite;transform-origin:center}
-.pet .bubble{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:7px 10px;font-size:12px;color:var(--dim);max-width:170px}
-.pet .bubble b{display:block;font-size:22px;color:var(--fg);font-weight:800;font-variant-numeric:tabular-nums}
 .capsule{align-items:center;gap:8px;padding:7px 12px;line-height:1}
 .capsule .lamp{width:8px;height:8px;border-radius:50%;background:var(--ok);flex:none;box-shadow:0 0 0 0 rgba(52,211,153,.5);animation:pulse 2s infinite}
 @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(52,211,153,.45)}70%{box-shadow:0 0 0 7px rgba(52,211,153,0)}100%{box-shadow:0 0 0 0 rgba(52,211,153,0)}}
@@ -72,7 +63,6 @@ body[data-mode=capsule] .mode.capsule{display:flex}
 <div class="modes" role="group" aria-label="Mode overlay">
 <button type="button" data-mode="capsule" title="Kapsul ringkas">kapsul</button>
 <button type="button" data-mode="gauge" title="Gauge mini">gauge</button>
-<button type="button" data-mode="pet" title="Maskot">pet</button>
 <button type="button" data-mode="card" title="Kartu lengkap">kartu</button>
 </div>
 
@@ -105,22 +95,6 @@ body[data-mode=capsule] .mode.capsule{display:flex}
 </div>
 </div>
 
-<div class="mode pet">
-<div class="card pet">
-<div class="blob">
-<svg viewBox="0 0 80 80" aria-hidden="true">
-<defs><linearGradient id="petg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#34d399"/><stop offset="1" stop-color="#059669"/></linearGradient></defs>
-<ellipse cx="40" cy="66" rx="22" ry="4" fill="#0b0e14"/>
-<rect x="13" y="14" width="54" height="48" rx="20" fill="url(#petg)"/>
-<g class="eyes" fill="#0c0e13"><ellipse cx="30" cy="36" rx="4.2" ry="5.4"/><ellipse cx="50" cy="36" rx="4.2" ry="5.4"/></g>
-<path d="M32 49 Q40 55 48 49" fill="none" stroke="#0c0e13" stroke-width="2.4" stroke-linecap="round"/>
-<circle cx="22" cy="45" r="3" fill="#0c0e13" opacity=".18"/><circle cx="58" cy="45" r="3" fill="#0c0e13" opacity=".18"/>
-</svg>
-</div>
-<div class="bubble"><b id="pcur">-</b><span id="pmood">menunggu...</span></div>
-</div>
-</div>
-
 <div class="mode capsule">
 <div class="card capsule">
 <i class="lamp" id="plamp"></i>
@@ -141,10 +115,10 @@ function token(){return sessionStorage.getItem('zbToken')||'';}
 function initialMode(){
   var m=(window.location.pathname.split('/')[2]||'').toLowerCase();
   if(m==='mini')m='gauge';
-  if(m&&['card','gauge','pet','capsule'].indexOf(m)>=0)return m;
+  if(m&&['card','gauge','capsule'].indexOf(m)>=0)return m;
   var q=new URLSearchParams(window.location.search).get('mode');
-  if(q&&['card','gauge','pet','capsule'].indexOf(q)>=0)return q;
-  try{var s=localStorage.getItem('zbOverlayMode');if(s&&['card','gauge','pet','capsule'].indexOf(s)>=0)return s;}catch(e){}
+  if(q&&['card','gauge','capsule'].indexOf(q)>=0)return q;
+  try{var s=localStorage.getItem('zbOverlayMode');if(s&&['card','gauge','capsule'].indexOf(s)>=0)return s;}catch(e){}
   return 'card';
 }
 function setMode(mode,save){
@@ -189,12 +163,6 @@ function render(res){
   byId('gtok').textContent=fmt(today.output_tokens);
   byId('greq').textContent=fmt(today.requests);
   byId('gstamp').textContent=stamp;
-
-  var mood=!last?'menunggu...':cur<40?'santai':cur<80?'siap':cur<160?'semangat':cur<240?'ngebut':'turbo';
-  byId('pcur').textContent=last?cur.toFixed(1)+' tok/dtk':'-';
-  byId('pmood').textContent=mood;
-  var blob=document.querySelector('.pet .blob svg');
-  if(blob)blob.style.animationDuration=cur>=160?'0.9s':cur>=80?'1.4s':'2.4s';
 
   byId('ccur').textContent=last?cur.toFixed(0):'-';
   byId('ccur').style.color=col;
