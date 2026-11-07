@@ -10,7 +10,8 @@ const ZB = window.ZB = {
   page: 'overview',
   range: '24h',
   live: false,
-  esAbort: null
+  esAbort: null,
+  lang: localStorage.getItem('zbLang') === 'en' ? 'en' : 'id'
 };
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -36,7 +37,7 @@ function fmtN(n) {
   if (n >= 1e9) return (n / 1e9).toFixed(2) + ' B';
   if (n >= 1e6) return (n / 1e6).toFixed(1) + ' M';
   if (n >= 1e4) return (n / 1e3).toFixed(1) + ' K';
-  return n.toLocaleString('id-ID');
+  return n.toLocaleString(ZB.lang === 'en' ? 'en-US' : 'id-ID');
 }
 function fmtTps(n) { n = Number(n) || 0; return n.toFixed(n >= 100 ? 0 : 1); }
 function fmtBps(n) {
@@ -58,14 +59,368 @@ function when(v) {
   let d = new Date(v);
   if (typeof v === 'number' && v < 1e12) d = new Date(v * 1000);
   if (isNaN(d)) return '-';
-  return d.toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleString(ZB.lang === 'en' ? 'en-GB' : 'id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
 }
 function toast(msg, kind) {
+  msg = tr(msg);
   const el = document.createElement('div');
   el.className = 'toast ' + (kind || '');
   el.textContent = msg;
   $('#toasts').appendChild(el);
   setTimeout(() => el.remove(), 4200);
+}
+
+const EN_TEXT = {
+  'Ringkasan': 'Overview',
+  'Akun': 'Accounts',
+  'Penggunaan': 'Usage',
+  'Jaringan': 'Network',
+  'Klaim plan': 'Plan claim',
+  'Pengaturan': 'Settings',
+  'Lane, kredensial, kuota, dan lalu lintas proses lokal.': 'Lane, credentials, quota, and local process traffic.',
+  'Kecepatan terakhir': 'Latest speed',
+  't/s dari request terakhir': 't/s from last request',
+  'Request hari ini': 'Requests today',
+  'Token hari ini': 'Tokens today',
+  'Kuota plan': 'Plan quota',
+  'memuat…': 'loading…',
+  'Memuat…': 'Loading…',
+  'Memuat...': 'Loading...',
+  'Memuat kuota…': 'Loading quota…',
+  'ring plan lokal': 'local plan ring',
+  'Ring plan lokal: koneksi, akun aktif, dan masa berlaku.': 'Local plan ring: connection, active accounts, and expiry.',
+  'tanpa masa aktif': 'no expiry',
+  'aktif': 'active',
+  'siap': 'ready',
+  'kedaluwarsa': 'expired',
+  'perlu login': 'reauth',
+  'jeda': 'cooldown',
+  'Hubungkan akun': 'Connect account',
+  'Label akun baru (mis. kerja)': 'New account label (e.g. work)',
+  'Belum ada akun tersimpan. Hubungkan akun Z.ai pertama.': 'No stored accounts yet. Connect your first Z.ai account.',
+  'Setujui tautan ini di browser yang sudah login ke Z.ai:': 'Approve this link in a browser already signed in to Z.ai:',
+  'Buka halaman izin': 'Open approval page',
+  'Salin tautan': 'Copy link',
+  'Batal': 'Cancel',
+  'Menunggu persetujuan...': 'Waiting for approval...',
+  'Akun terhubung.': 'Account connected.',
+  'Login dibatalkan.': 'Login cancelled.',
+  'Login gagal.': 'Login failed.',
+  'Tutup': 'Close',
+  'Akun berhasil terhubung': 'Account connected',
+  'Akun aktif diganti': 'Active account changed',
+  'Akun dihapus': 'Account deleted',
+  'Kunci baru dibuat dan dipakai tab ini': 'New key created and used by this tab',
+  'Kunci dihapus': 'Key deleted',
+  'Request terakhir': 'Recent requests',
+  'Waktu': 'Time',
+  'Metode': 'Method',
+  'Rute': 'Route',
+  'Durasi': 'Duration',
+  'Ukuran': 'Size',
+  'Token': 'Tokens',
+  'Jaringan proses': 'Process network',
+  'Baca': 'Read',
+  'Tulis': 'Write',
+  'Total': 'Total',
+  'Adapter': 'Adapters',
+  'Turun': 'Down',
+  'Naik': 'Up',
+  'Unduh': 'Download',
+  'Unggah': 'Upload',
+  'semua adapter': 'all adapters',
+  'Hari ini': 'Today',
+  'hari ini': 'today',
+  'Sepanjang waktu': 'All time',
+  'Kecepatan': 'Speed',
+  'Puncak': 'Peak',
+  'Rata-rata': 'Average',
+  'Rata-rata 7 hari': '7-day average',
+  'Rata-rata 7h': '7h average',
+  'Puncak 7h': '7h peak',
+  'Terakhir': 'Last',
+  'Tertinggi': 'Highest',
+  'Per model': 'Per model',
+  'Aplikasi ZCode': 'ZCode app',
+  'Sesi': 'Sessions',
+  'Aktivitas': 'Activity',
+  '7 hari': '7 days',
+  'Keluar': 'Out',
+  'Masuk': 'In',
+  'Token keluar': 'Output tokens',
+  'Token masuk': 'Input tokens',
+  'token keluar': 'output tokens',
+  'Info lane': 'Lane info',
+  'Versi app': 'App version',
+  'Versi': 'Version',
+  'Token plan': 'Plan token',
+  'ada': 'present',
+  'tidak ada': 'none',
+  'tidak': 'no',
+  'ya': 'yes',
+  'tidak tersedia': 'unavailable',
+  'tidak didukung': 'unsupported',
+  'nonaktif': 'disabled',
+  'sampler lokal': 'local sampler',
+  'Klaim': 'Claim',
+  'Token, kecepatan, dan tren per model.': 'Tokens, speed, and per-model trends.',
+  'Klaim sekarang': 'Claim now',
+  'Cek plan weekend/trial yang tersedia lalu klaim.': 'Check available weekend/trial plans, then claim.',
+  'Tidak ada plan yang bisa diklaim.': 'No plans available to claim.',
+  'Tekan “Cek plan” untuk memindai penawaran.': 'Press “Check plans” to scan offers.',
+  'Riwayat klaim': 'Claim history',
+  'Belum ada riwayat.': 'No history yet.',
+  'Buka halaman klaim': 'Open claim page',
+  'Butuh plan JWT / device MID.': 'A plan JWT / device MID is required.',
+  'Permintaan klaim dikirim': 'Claim request sent',
+  'Mulai': 'Start',
+  'Selesai': 'End',
+  'Inspector': 'Inspector',
+  'Rekaman request/response lokal, replay, dan ekspor HAR.': 'Local request/response capture, replay, and HAR export.',
+  'Muat ulang': 'Reload',
+  'Ekspor HAR': 'Export HAR',
+  'Cari model, path, akun…': 'Search model, path, account…',
+  'Semua metode': 'All methods',
+  'Semua status': 'All statuses',
+  'Pilih satu baris untuk melihat detail.': 'Select a row to view details.',
+  'Tidak ada hasil.': 'No results.',
+  'Memuat detail…': 'Loading details…',
+  'Replay terkirim': 'Replay sent',
+  'Entri dihapus': 'Entry deleted',
+  'Sharing': 'Sharing',
+  'Papan sharing lokal: post, link, gambar, dan komentar tersimpan di bridge ini.': 'Local sharing board: posts, links, images, and comments are stored on this bridge.',
+  'Judul': 'Title',
+  'Tulis pesan...': 'Write a message...',
+  'Gambar': 'Image',
+  'Link (opsional)': 'Link (optional)',
+  'Nama': 'Name',
+  'Nama tampilan': 'Display name',
+  'Lampiran': 'Attachment',
+  'Belum ada komentar.': 'No comments yet.',
+  'Tulis komentar...': 'Write a comment...',
+  'Suka': 'Like',
+  'Komentar': 'Comments',
+  'Belum ada post': 'No posts yet',
+  'Mulai dari form di atas.': 'Start with the form above.',
+  'Memuat feed...': 'Loading feed...',
+  'Terbaru': 'Newest',
+  'Terpopuler': 'Top',
+  'Judul wajib diisi': 'Title is required',
+  'Isi, link, atau gambar wajib ada': 'Add a message, link, or image',
+  'Gambar maksimal 120 KB': 'Image must be under 120 KB',
+  'Hanya file gambar yang didukung': 'Only image files are supported',
+  'Gambar gagal dibaca': 'Image could not be read',
+  'Hapus gambar': 'Remove image',
+  'Pratinjau gambar': 'Image preview',
+  'Post terkirim': 'Posted',
+  'Post dihapus': 'Post deleted',
+  'Hapus post ini?': 'Delete this post?',
+  'Jangan posting token privat. Siapa pun yang membuka bridge ini bisa membaca papan.': 'Do not post private tokens. Anyone who opens this bridge can read the board.',
+  'Urutkan post': 'Sort posts',
+  'judul wajib diisi': 'title is required',
+  'judul terlalu panjang': 'title is too long',
+  'isi post terlalu panjang': 'post body is too long',
+  'link terlalu panjang': 'link is too long',
+  'link harus http/https': 'link must be http or https',
+  'gambar tidak didukung atau terlalu besar': 'image is unsupported or too large',
+  'isi, link, atau gambar wajib ada': 'add a message, link, or image',
+  'komentar kosong': 'comment is empty',
+  'komentar terlalu panjang': 'comment is too long',
+  'post tidak ditemukan': 'post not found',
+  'hanya pembuat post yang bisa menghapus': 'only the post creator can delete it',
+  'body bukan JSON yang valid': 'request body is not valid JSON',
+  'id wajib diisi': 'id is required',
+  '(dipotong)': '(truncated)',
+  'Jaringan': 'Network',
+  'Lalu lintas adapter, koneksi TCP, dan proses ZCode.': 'Adapter traffic, TCP connections, and the ZCode process.',
+  'Proses ZCode': 'ZCode process',
+  'Proses ZCode tidak ditemukan.': 'ZCode process not found.',
+  'Menunggu sampel jaringan…': 'Waiting for network samples…',
+  'Tidak ada adapter.': 'No adapters.',
+  'Nilai efektif proses ini. Perubahan env butuh restart.': 'Effective values for this process. Env changes need a restart.',
+  'Token & tema': 'Token & theme',
+  'Bearer token (sesi tab)': 'Bearer token (tab session)',
+  'Simpan token': 'Save token',
+  'Tema': 'Theme',
+  'Ganti tema': 'Change theme',
+  'Integrasi agen': 'Agent integration',
+  'Kunci API (Bearer hilir)': 'API key (downstream Bearer)',
+  'belum di-set': 'not set',
+  'belum di-set, bridge terbuka di loopback': 'not set, bridge is open on loopback',
+  'Buat kunci': 'Create key',
+  'Ganti kunci': 'Rotate key',
+  'Contoh permintaan': 'Example request',
+  'Salin contoh': 'Copy example',
+  'Klien lain memakai kunci ini sebagai': 'Other clients use this key as',
+  '. Kunci env tidak bisa diubah dari dashboard.': '. Env keys cannot be changed from the dashboard.',
+  'Variabel': 'Variable',
+  'Nilai': 'Value',
+  'Data & alat': 'Data & tools',
+  'Dashboard klasik': 'Classic dashboard',
+  'Capture kapasitas': 'Capture capacity',
+  'Capture dan flag lain dibaca saat start; ubah env lalu restart bridge.': 'Capture and other flags are read at startup; change env then restart the bridge.',
+  'Tidak ada override env yang terbaca.': 'No environment overrides found.',
+  'Token bridge': 'Bridge token',
+  'Atur token bridge': 'Set bridge token',
+  'Diperlukan saat ZCODE_BRIDGE_TOKEN di-set. Disimpan di sesi tab ini.': 'Required when ZCODE_BRIDGE_TOKEN is set. Stored in this tab session.',
+  'Token disimpan': 'Token saved',
+  'Token dihapus': 'Token deleted',
+  'Status stream langsung': 'Live stream status',
+  'Navigasi utama': 'Main navigation',
+  'Buka menu': 'Open menu',
+  'lane lokal': 'local lane',
+  'memuat lane': 'loading lane',
+  'Buka overlay': 'Open overlay',
+  'Lewati ke konten': 'Skip to content',
+  '+ Baru': '+ New',
+  'Ekspor': 'Export',
+  'Impor': 'Import',
+  'Daftar': 'List',
+  'Daftar chat': 'Chat list',
+  'Kosongkan': 'Clear',
+  'Cari percakapan…': 'Search chats…',
+  'Tulis pesan… Enter kirim, Shift+Enter baris baru': 'Write a message… Enter sends, Shift+Enter for a new line',
+  'Kirim': 'Send',
+  'Stop': 'Stop',
+  'Mulai percakapan': 'Start a conversation',
+  'Pesan dikirim lewat lane plan bridge. Model, suhu, dan batas token ada di header.': 'Messages go through the bridge plan lane. Model, temperature and token limits are in the header.',
+  'Jelaskan arsitektur bridge ini': 'Explain this bridge architecture',
+  'Buat fungsi Go untuk parsing SSE': 'Write a Go function to parse SSE',
+  'Ringkas log error terakhir': 'Summarize the latest error log',
+  'Kamu': 'You',
+  'Asisten': 'Assistant',
+  'Salin': 'Copy',
+  'Salin pesan': 'Copy message',
+  'Ulangi': 'Retry',
+  'Proses berpikir': 'Reasoning',
+  '(kosong)': '(empty)',
+  'kosong': 'empty',
+  '(tidak ada balasan)': '(no reply)',
+  '(dihentikan)': '(stopped)',
+  'Percakapan baru': 'New chat',
+  'Belum ada percakapan.': 'No chats yet.',
+  'Ubah': 'Rename',
+  'Ganti nama': 'Rename',
+  'Hapus': 'Delete',
+  'Max token (0 = default)': 'Max tokens (0 = default)',
+  '(model belum dimuat)': '(model not loaded yet)',
+  'streaming…': 'streaming…',
+  'Riwayat penuh: hapus percakapan lama': 'History full: delete old chats',
+  'Hentikan stream dulu': 'Stop the stream first',
+  'Model belum tersedia': 'Model not available',
+  'Token diperlukan': 'Token required',
+  'token diperlukan': 'token required',
+  'Stream dihentikan': 'Stream stopped',
+  'Gagal menyalin': 'Copy failed',
+  'Disalin': 'Copied',
+  'format tidak dikenal': 'unknown format',
+  'Hapus kunci? Setelah ini bridge terbuka untuk siapa pun di loopback.': 'Delete the key? The bridge will then be open to anyone on loopback.',
+  'Ganti kunci? Klien yang memakai kunci lama langsung ditolak.': 'Rotate the key? Clients using the old key will be rejected immediately.',
+  'Nama percakapan': 'Chat name',
+  'Kosongkan pesan di percakapan ini?': 'Clear the messages in this chat?',
+  'Model gagal dimuat: ': 'Failed to load models: ',
+  'Impor gagal: ': 'Import failed: ',
+  'Database aplikasi tidak terbaca.': 'Application database could not be read.',
+  'Belum ada request hari ini.': 'No requests today yet.',
+  'Belum ada request pada rentang ini': 'No requests in this range'
+};
+
+const EN_PATTERNS = [
+  [/^(\S+) koneksi TCP, (.+) established$/, '$1 TCP connections, $2 established'],
+  [/^(.+) token keluar · (.+) masuk$/, '$1 output tokens · $2 input tokens'],
+  [/^(\d+) pesan · (.+)$/, '$1 messages · $2'],
+  [/^sisa (.+)$/, '$1 left'],
+  [/^berakhir (.+)$/, 'ends $1'],
+  [/^akun (.+) · (.+)$/, 'account $1 · $2'],
+  [/^ada \((\d+) akun\)$/, 'present ($1 account)'],
+  [/^(.+) \/ (.+) unit$/, '$1 / $2 units'],
+  [/^Model default (.+)$/, 'Default model $1'],
+  [/^Tampilan: (.+)$/, 'Preview: $1'],
+  [/^Kalibrasi (.+)$/, 'Calibration $1'],
+  [/^(.+) token$/, '$1 tokens'],
+  [/^Hapus akun (.+)\?$/, 'Delete account $1?'],
+  [/^Hapus percakapan "(.+)"\?$/, 'Delete chat "$1"?'],
+  [/^(\d+) percakapan diimpor$/, '$1 chats imported'],
+  [/^Impor gagal: (.+)$/, 'Import failed: $1'],
+  [/^Model gagal dimuat: (.+)$/, 'Failed to load models: $1'],
+  [/^(\d+) akun$/, '$1 accounts']
+];
+
+function tr(text) {
+  if (ZB.lang !== 'en' || !text) return text;
+  if (Object.prototype.hasOwnProperty.call(EN_TEXT, text)) return EN_TEXT[text];
+  const tcp = text.match(/^(\d+) koneksi TCP, (.+) established$/);
+  if (tcp) return tcp[1] + ' TCP connection' + (tcp[1] === '1' ? '' : 's') + ', ' + tcp[2] + ' established';
+  for (const [re, rep] of EN_PATTERNS) {
+    if (re.test(text)) return text.replace(re, rep);
+  }
+  return text;
+}
+ZB.tr = tr;
+
+function translateTextNode(node) {
+  const raw = node.nodeValue;
+  if (!raw) return;
+  const core = raw.trim();
+  if (!core) return;
+  const next = tr(core);
+  if (next === core) return;
+  const at = raw.indexOf(core);
+  node.nodeValue = raw.slice(0, at) + next + raw.slice(at + core.length);
+}
+
+const I18N_SKIP = '.msg-body,.snippet,.share-title,.share-body,.share-author,.share-link,.share-comment-body,.share-comment-author,script,style,textarea';
+
+function translateTree(root) {
+  if (ZB.lang !== 'en' || !root) return;
+  if (root.nodeType === 3) { translateTextNode(root); return; }
+  if (root.nodeType !== 1 && root.nodeType !== 9) return;
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    if (!n.parentElement) continue;
+    if (n.parentElement.closest(I18N_SKIP) && !n.parentElement.closest('.think summary')) continue;
+    translateTextNode(n);
+  }
+  const els = [];
+  if (root.nodeType === 1) els.push(root);
+  if (root.querySelectorAll) els.push(...root.querySelectorAll('[placeholder],[title],[aria-label]'));
+  for (const el of els) {
+    for (const attr of ['placeholder', 'title', 'aria-label']) {
+      const v = el.getAttribute(attr);
+      if (!v) continue;
+      const next = tr(v);
+      if (next !== v) el.setAttribute(attr, next);
+    }
+  }
+}
+
+let i18nObserver = null;
+const nativeConfirm = window.confirm.bind(window);
+const nativePrompt = window.prompt.bind(window);
+window.confirm = message => nativeConfirm(tr(message));
+window.prompt = (message, value) => nativePrompt(tr(message), value);
+
+function applyLanguage() {
+  document.documentElement.lang = ZB.lang;
+  const btn = $('#langbtn');
+  if (btn) {
+    btn.textContent = ZB.lang === 'en' ? 'ID' : 'EN';
+    btn.title = ZB.lang === 'en' ? 'Ganti ke Bahasa Indonesia' : 'Switch to English';
+    btn.setAttribute('aria-label', btn.title);
+    btn.onclick = () => {
+      localStorage.setItem('zbLang', ZB.lang === 'en' ? 'id' : 'en');
+      location.reload();
+    };
+  }
+  translateTree(document.body);
+  if (!i18nObserver && document.body) {
+    i18nObserver = new MutationObserver(mutations => {
+      for (const m of mutations) {
+        for (const n of m.addedNodes) translateTree(n);
+      }
+    });
+    i18nObserver.observe(document.body, { childList: true, subtree: true });
+  }
 }
 ZB.esc = esc; ZB.fmtN = fmtN; ZB.toast = toast;
 
@@ -94,7 +449,7 @@ ZB.api = api;
 function route() {
   let hash = location.hash.replace(/^#\/?/, '').split('?')[0];
   if (!hash) hash = location.pathname === '/chat' ? 'chat' : 'overview';
-  if (!['overview', 'accounts', 'chat', 'inspector', 'usage', 'network', 'claim', 'settings'].includes(hash)) hash = 'overview';
+  if (!['overview', 'accounts', 'chat', 'sharing', 'inspector', 'usage', 'network', 'claim', 'settings'].includes(hash)) hash = 'overview';
   ZB.page = hash;
   $$('#nav a').forEach(a => a.classList.toggle('active', a.dataset.page === hash));
   document.body.classList.toggle('navopen', false);
@@ -103,7 +458,7 @@ function route() {
   view.innerHTML = '';
   if (hash === 'chat' && window.ZChat) window.ZChat.mount(view);
   else if (hash === 'chat') view.innerHTML = '<div class="empty">Memuat chat…</div>';
-  else ({ overview: pageOverview, accounts: pageAccounts, inspector: pageInspector, usage: pageUsage, network: pageNetwork, claim: pageClaim, settings: pageSettings })[hash](view);
+  else ({ overview: pageOverview, accounts: pageAccounts, sharing: pageSharing, inspector: pageInspector, usage: pageUsage, network: pageNetwork, claim: pageClaim, settings: pageSettings })[hash](view);
   view.scrollTop = 0;
 }
 window.addEventListener('hashchange', route);
@@ -638,6 +993,248 @@ async function scanClaim() {
   }
 }
 
+/* ---------------- sharing ---------------- */
+const shareState = { sort: 'new', posts: [], image: '' };
+const shareOpen = new Set();
+const SHARE_ICON_LIKE = '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M5 7.2 7.6 2c.5 0 .9.4.9.9v2.6h3.3c.9 0 1.5.8 1.3 1.6l-1 4.4c-.1.6-.7 1-1.3 1H5M5 7.2H2.5v5.5H5z"/></svg>';
+const SHARE_ICON_COMMENT = '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M2.5 3.2h11v7.1h-6L4.3 13v-2.7H2.5z"/></svg>';
+
+function shareClient() {
+  let id = localStorage.getItem('zbShareClient');
+  if (!id) {
+    id = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+    localStorage.setItem('zbShareClient', id);
+  }
+  return id;
+}
+
+function shareName() {
+  return (localStorage.getItem('zbShareName') || '').trim() || 'anon';
+}
+
+function shareAgo(ms) {
+  const s = Math.max(0, Math.round((Date.now() - (Number(ms) || 0)) / 1000));
+  if (s < 60) return ZB.lang === 'en' ? 'just now' : 'baru saja';
+  const units = ZB.lang === 'en'
+    ? [[86400, 'd'], [3600, 'h'], [60, 'm']]
+    : [[86400, 'hari'], [3600, 'jam'], [60, 'menit']];
+  for (const [size, label] of units) {
+    if (s >= size) {
+      const n = Math.floor(s / size);
+      return ZB.lang === 'en' ? n + label + ' ago' : n + ' ' + label + ' lalu';
+    }
+  }
+  return ZB.lang === 'en' ? 'just now' : 'baru saja';
+}
+
+function shareCount(n) {
+  if (ZB.lang === 'en') return n + ' post' + (n === 1 ? '' : 's');
+  return n + ' post';
+}
+
+function sharePostHTML(p) {
+  const open = shareOpen.has(p.id);
+  const image = p.image ? `<img class="share-img" src="${esc(p.image)}" alt="${esc(tr('Lampiran'))}: ${esc(p.title)}" width="960" height="540" loading="lazy">` : '';
+  const link = p.link ? `<a class="share-link" href="${esc(p.link)}" target="_blank" rel="noopener noreferrer">${esc(p.link)}</a>` : '';
+  const comments = p.comments || [];
+  const body = comments.map(c => `<div class="share-comment">
+      <div class="share-comment-meta"><b class="share-comment-author">${esc(c.author)}</b><span aria-hidden="true">·</span><time>${esc(shareAgo(c.createdAt))}</time></div>
+      <p class="share-comment-body">${esc(c.body)}</p>
+    </div>`).join('') || `<p class="small muted">${esc(tr('Belum ada komentar.'))}</p>`;
+  return `<article class="share-post" data-id="${esc(p.id)}">
+    <div class="share-post-head">
+      <h3 class="share-title">${esc(p.title)}</h3>
+      ${p.mine ? `<button class="btn ghost sm danger" data-del="${esc(p.id)}" type="button">${esc(tr('Hapus'))}</button>` : ''}
+    </div>
+    <div class="share-meta"><span class="share-author">${esc(p.author)}</span><span aria-hidden="true">·</span><time datetime="${new Date(p.createdAt).toISOString()}">${esc(shareAgo(p.createdAt))}</time></div>
+    ${p.body ? `<p class="share-body">${esc(p.body)}</p>` : ''}
+    ${link}
+    ${image}
+    <div class="share-actions">
+      <button class="share-action ${p.liked ? 'on' : ''}" data-like="${esc(p.id)}" aria-pressed="${p.liked}" type="button">${SHARE_ICON_LIKE}<span>${p.likes}</span><span class="share-action-label">${esc(tr('Suka'))}</span></button>
+      <button class="share-action" data-comments="${esc(p.id)}" aria-expanded="${open}" type="button">${SHARE_ICON_COMMENT}<span>${comments.length}</span><span class="share-action-label">${esc(tr('Komentar'))}</span></button>
+    </div>
+    <section class="share-comments" ${open ? '' : 'hidden'} data-comments-body="${esc(p.id)}">
+      ${body}
+      <form class="share-comment-form" data-cform="${esc(p.id)}">
+        <input maxlength="1000" placeholder="${esc(tr('Tulis komentar...'))}" aria-label="${esc(tr('Komentar'))}" autocomplete="off">
+        <button class="btn sm" type="submit">${esc(tr('Kirim'))}</button>
+      </form>
+    </section>
+  </article>`;
+}
+
+function renderShareFeed() {
+  const box = $('#share-feed');
+  if (!box) return;
+  const count = $('#share-count');
+  if (count) count.textContent = shareCount(shareState.posts.length);
+  const list = shareState.sort === 'top'
+    ? shareState.posts.slice().sort((a, b) => (b.likes - a.likes) || (b.createdAt - a.createdAt))
+    : shareState.posts;
+  box.innerHTML = list.length
+    ? list.map(sharePostHTML).join('')
+    : `<div class="empty share-empty"><b>${esc(tr('Belum ada post'))}</b><span>${esc(tr('Mulai dari form di atas.'))}</span></div>`;
+}
+
+async function loadSharing() {
+  const box = $('#share-feed');
+  if (box && !shareState.posts.length) box.innerHTML = `<div class="empty">${esc(tr('Memuat feed...'))}</div>`;
+  try {
+    const q = '/v1/sharing?sort=' + encodeURIComponent(shareState.sort) + '&client=' + encodeURIComponent(shareClient());
+    const d = await api(q);
+    shareState.posts = d.posts || [];
+    renderShareFeed();
+  } catch (e) {
+    if (box) box.innerHTML = `<div class="empty">${esc(e.message)}</div>`;
+  }
+}
+
+function replaceSharePost(post) {
+  const i = shareState.posts.findIndex(p => p.id === post.id);
+  if (i >= 0) shareState.posts[i] = post;
+  renderShareFeed();
+}
+
+function pageSharing(view) {
+  shareState.sort = 'new';
+  shareState.posts = [];
+  shareState.image = '';
+  shareOpen.clear();
+  const name = shareName();
+  view.innerHTML = skeleton('Sharing', 'Papan sharing lokal: post, link, gambar, dan komentar tersimpan di bridge ini.') + `
+  <form class="card share-composer" id="share-form">
+    <div class="share-compose-head">
+      <input id="share-title" maxlength="120" placeholder="Judul" aria-label="Judul" autocomplete="off">
+      <button class="btn primary" id="share-submit" type="submit">Post</button>
+    </div>
+    <textarea id="share-body" rows="3" maxlength="4000" placeholder="Tulis pesan..." aria-label="Tulis pesan..."></textarea>
+    <div id="share-preview" class="share-preview hidden"><img id="share-preview-img" alt="Pratinjau gambar"><button class="btn ghost sm" id="share-drop" type="button">Hapus gambar</button></div>
+    <div class="share-tools">
+      <label class="btn ghost sm share-attach" for="share-image">
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M2.5 4.5h11v7h-11z"/><path d="m3.5 10 3-3 2.5 2.5 1.5-1.5 2 2"/><circle cx="10.7" cy="6.3" r=".9"/></svg>
+        <span>Gambar</span>
+        <input id="share-image" type="file" accept="image/png,image/jpeg,image/gif,image/webp" hidden>
+      </label>
+      <input id="share-link" class="grow" maxlength="600" placeholder="Link (opsional)" aria-label="Link (opsional)" autocomplete="off">
+      <label class="share-name-wrap"><span class="small muted">Nama</span><input id="share-name" maxlength="40" value="${esc(name === 'anon' ? '' : name)}" placeholder="Nama" aria-label="Nama tampilan" autocomplete="off"></label>
+    </div>
+    <p class="small muted share-warn">Jangan posting token privat. Siapa pun yang membuka bridge ini bisa membaca papan.</p>
+  </form>
+  <div class="share-feed-head">
+    <h2>Feed</h2><span class="small muted" id="share-count"></span><span class="spacer"></span>
+    <select id="share-sort" aria-label="Urutkan post"><option value="new">Terbaru</option><option value="top">Terpopuler</option></select>
+    <button class="btn ghost sm" id="share-refresh" type="button">Muat ulang</button>
+  </div>
+  <div id="share-feed" class="share-feed" aria-live="polite"><div class="empty">${esc(tr('Memuat feed...'))}</div></div>`;
+
+  const form = $('#share-form');
+  const nameInput = $('#share-name');
+  nameInput.oninput = () => localStorage.setItem('zbShareName', nameInput.value.trim());
+  $('#share-image').onchange = ev => {
+    const file = ev.target.files && ev.target.files[0];
+    if (!file) return;
+    if (!/^image\/(png|jpeg|gif|webp)$/.test(file.type)) { toast(tr('Hanya file gambar yang didukung'), 'bad'); ev.target.value = ''; return; }
+    if (file.size > 120 * 1024) { toast(tr('Gambar maksimal 120 KB'), 'bad'); ev.target.value = ''; return; }
+    const reader = new FileReader();
+    reader.onload = () => {
+      shareState.image = String(reader.result || '');
+      $('#share-preview-img').src = shareState.image;
+      $('#share-preview').classList.remove('hidden');
+    };
+    reader.onerror = () => toast(tr('Gambar gagal dibaca'), 'bad');
+    reader.readAsDataURL(file);
+    ev.target.value = '';
+  };
+  $('#share-drop').onclick = () => {
+    shareState.image = '';
+    $('#share-preview').classList.add('hidden');
+    $('#share-preview-img').removeAttribute('src');
+  };
+  $('#share-sort').onchange = ev => { shareState.sort = ev.target.value === 'top' ? 'top' : 'new'; loadSharing(); };
+  $('#share-refresh').onclick = () => loadSharing();
+
+  form.onsubmit = async ev => {
+    ev.preventDefault();
+    const title = $('#share-title').value.trim();
+    const body = $('#share-body').value.trim();
+    const link = $('#share-link').value.trim();
+    const author = shareName();
+    if (!title) { toast(tr('Judul wajib diisi'), 'bad'); $('#share-title').focus(); return; }
+    if (!body && !link && !shareState.image) { toast(tr('Isi, link, atau gambar wajib ada'), 'bad'); $('#share-body').focus(); return; }
+    const btn = $('#share-submit');
+    btn.disabled = true;
+    try {
+      const r = await api('/v1/sharing', { method: 'POST', body: JSON.stringify({ title, body, link, image: shareState.image, author, client: shareClient() }) });
+      shareState.posts.unshift(r.post);
+      shareState.image = '';
+      form.reset();
+      nameInput.value = author === 'anon' ? '' : author;
+      $('#share-preview').classList.add('hidden');
+      $('#share-preview-img').removeAttribute('src');
+      renderShareFeed();
+      toast(tr('Post terkirim'), 'ok');
+      $('#share-title').focus();
+    } catch (e) { toast(e.message, 'bad'); }
+    finally { btn.disabled = false; }
+  };
+
+  const feed = $('#share-feed');
+  feed.addEventListener('click', async ev => {
+    const likeBtn = ev.target.closest('[data-like]');
+    if (likeBtn) {
+      likeBtn.disabled = true;
+      try {
+        const r = await api('/v1/sharing/like', { method: 'POST', body: JSON.stringify({ id: likeBtn.dataset.like, client: shareClient() }) });
+        replaceSharePost(r.post);
+      } catch (e) { toast(e.message, 'bad'); likeBtn.disabled = false; }
+      return;
+    }
+    const commentBtn = ev.target.closest('[data-comments]');
+    if (commentBtn) {
+      const id = commentBtn.dataset.comments;
+      if (shareOpen.has(id)) shareOpen.delete(id); else shareOpen.add(id);
+      renderShareFeed();
+      if (shareOpen.has(id)) {
+        const input = feed.querySelector(`[data-comments-body="${CSS.escape(id)}"] input`);
+        if (input) input.focus();
+      }
+      return;
+    }
+    const delBtn = ev.target.closest('[data-del]');
+    if (delBtn) {
+      const post = shareState.posts.find(p => p.id === delBtn.dataset.del);
+      if (!confirm(tr('Hapus post ini?'))) return;
+      delBtn.disabled = true;
+      try {
+        await api('/v1/sharing?id=' + encodeURIComponent(delBtn.dataset.del) + '&client=' + encodeURIComponent(shareClient()), { method: 'DELETE' });
+        shareState.posts = shareState.posts.filter(p => p.id !== delBtn.dataset.del);
+        renderShareFeed();
+        toast(tr('Post dihapus'), 'ok');
+      } catch (e) { toast(e.message, 'bad'); delBtn.disabled = false; }
+    }
+  });
+  feed.addEventListener('submit', async ev => {
+    const cform = ev.target.closest('[data-cform]');
+    if (!cform) return;
+    ev.preventDefault();
+    const input = cform.querySelector('input');
+    const body = input.value.trim();
+    if (!body) return;
+    const btn = cform.querySelector('button');
+    btn.disabled = true;
+    try {
+      const r = await api('/v1/sharing/comment', { method: 'POST', body: JSON.stringify({ id: cform.dataset.cform, author: shareName(), body, client: shareClient() }) });
+      shareOpen.add(cform.dataset.cform);
+      replaceSharePost(r.post);
+      const next = feed.querySelector(`[data-comments-body="${CSS.escape(cform.dataset.cform)}"] input`);
+      if (next) next.focus();
+    } catch (e) { toast(e.message, 'bad'); btn.disabled = false; }
+  });
+
+  loadSharing();
+}
+
 /* ---------------- settings ---------------- */
 async function pageSettings(view) {
   view.innerHTML = skeleton('Pengaturan', 'Nilai efektif proses ini. Perubahan env butuh restart.') + `
@@ -819,6 +1416,7 @@ function boot() {
   });
   $('#tokencancel').onclick = () => { const d = $('#tokendlg'); if (d.close) d.close(); else d.removeAttribute('open'); };
   route();
+  applyLanguage();
   refreshHealth();
   api('/v1/usage').then(u => { ZB.usage = u; patchSideStats(); if (ZB.page === 'overview') patchOverview(); if (ZB.page === 'usage') renderUsage(); }).catch(() => {});
   api('/v1/net').then(n => { ZB.net = n; patchSideStats(); if (ZB.page === 'overview') patchOverview(); if (ZB.page === 'network') renderNetwork(); }).catch(() => {});

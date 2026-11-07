@@ -203,6 +203,53 @@ dialog .row{margin-top:14px}
 .chat-composer{display:flex;align-items:flex-end;gap:8px;padding:10px 14px 14px;border-top:1px solid var(--line);background:var(--bg2)}
 .chat-composer textarea{flex:1;resize:none;max-height:220px;min-height:42px;padding:10px 12px;border-radius:11px;font-size:13.5px}
 .chat-composer .btn{height:42px;padding:0 16px}
+/* sharing */
+.share-composer{display:flex;flex-direction:column;gap:9px}
+.share-compose-head{display:flex;align-items:center;gap:10px}
+#share-title{flex:1;min-width:0;font-size:18px;font-weight:700;letter-spacing:-.01em;background:transparent;border:0;padding:4px 0}
+#share-title:focus{outline:2px solid color-mix(in srgb,var(--accent) 55%,transparent);outline-offset:2px;border-radius:4px}
+.share-composer textarea{width:100%;min-height:86px;resize:vertical;background:var(--bg2);font-size:13.5px;line-height:1.5}
+.share-tools{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.share-tools .grow{flex:1;min-width:180px}
+.share-attach{cursor:pointer}
+.share-name-wrap{display:inline-flex;align-items:center;gap:6px}
+.share-name-wrap input{width:130px}
+.share-preview{display:flex;align-items:center;gap:10px;flex-wrap:wrap;border:1px solid var(--line);border-radius:9px;padding:8px;background:var(--bg2)}
+.share-preview img{max-height:132px;max-width:100%;border-radius:7px;border:1px solid var(--line);background:var(--panel)}
+.share-warn{margin:0}
+.share-feed-head{display:flex;align-items:center;gap:9px;margin:22px 0 10px;flex-wrap:wrap}
+.share-feed-head h2{font-size:15px}
+.share-feed{display:flex;flex-direction:column;gap:12px}
+.share-post{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;min-width:0}
+.share-post-head{display:flex;align-items:flex-start;gap:10px}
+.share-post-head h3{flex:1;font-size:16px;letter-spacing:-.01em;overflow-wrap:anywhere;line-height:1.35}
+.share-meta{display:flex;gap:6px;align-items:baseline;flex-wrap:wrap;font-size:11.5px;color:var(--muted);margin-top:3px}
+.share-author{color:var(--fg);font-weight:600}
+.share-body{margin:10px 0 0;font-size:13.5px;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere}
+.share-link{display:inline-block;margin-top:9px;font-size:12.5px;text-decoration:underline;text-underline-offset:2px;overflow-wrap:anywhere;word-break:break-all}
+.share-img{display:block;width:100%;max-width:520px;max-height:360px;object-fit:cover;margin-top:10px;border:1px solid var(--line);border-radius:9px;background:var(--bg2)}
+.share-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.share-action{display:inline-flex;align-items:center;gap:5px;padding:5px 9px;border:1px solid var(--line);border-radius:8px;background:transparent;color:var(--muted);font-size:12px;cursor:pointer}
+.share-action:hover{color:var(--fg);border-color:color-mix(in srgb,var(--accent) 45%,var(--line))}
+.share-action.on{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 45%,var(--line));background:color-mix(in srgb,var(--accent) 10%,transparent)}
+.share-action-label{font-weight:600}
+.share-comments{display:flex;flex-direction:column;gap:9px;border-top:1px solid var(--line);margin-top:12px;padding-top:10px}
+.share-comments[hidden]{display:none}
+.share-comment-meta{display:flex;gap:6px;align-items:baseline;font-size:11.5px;color:var(--muted)}
+.share-comment-author{color:var(--fg);font-size:12px}
+.share-comment-body{margin:2px 0 0;font-size:13px;white-space:pre-wrap;overflow-wrap:anywhere}
+.share-comment-form{display:flex;gap:7px;margin-top:2px}
+.share-comment-form input{flex:1;min-width:0;padding:6px 9px;font-size:12.5px}
+.share-empty{display:flex;flex-direction:column;gap:4px}
+.share-empty b{color:var(--fg)}
+@media(max-width:620px){
+  .share-compose-head{flex-wrap:wrap}
+  #share-title{flex-basis:100%}
+  .share-name-wrap{width:100%}
+  .share-name-wrap input{flex:1;width:auto}
+  .share-post{padding:12px 13px}
+}
+.langbtn{font-size:11px;font-weight:600;letter-spacing:.01em}
 .acct-list{display:flex;flex-direction:column}
 .acct-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 10px;padding:10px 0;border-top:1px solid var(--line)}
 .acct-row:first-child{border-top:0;padding-top:0}

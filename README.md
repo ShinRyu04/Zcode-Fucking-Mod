@@ -41,13 +41,15 @@ Key features:
   **Playground** tab that sends real prompts through the same lane so a model
   can be tested without leaving the dashboard.
 - A console rewrite at `/dashboard`: an instrument-style SPA (hash router,
-  dark/light theme, embedded assets, no CDN) covering overview, inspector,
-  usage, network, claim and settings, fed live by `GET /v1/events` (SSE over
+  dark/light theme, embedded assets, no CDN) covering overview, accounts, chat,
+  sharing, inspector, usage, network, claim and settings, fed live by `GET /v1/events` (SSE over
   `fetch`, so the bridge token travels in a header). The overview has a full
   **account manager** (start a device-flow login from the browser, switch the
   active account, remove one, see expiry/reauth state). Settings has an
   **agent integration** card: downstream bearer key, base URL, default model
   and a copyable curl example. The legacy page stays at `/classic`.
+  A topbar **EN/ID** toggle switches the console to English; Indonesian stays
+  the default, and chat message bodies plus code are never translated.
   `GET /v1/settings` reports the effective, restart-required configuration
   without secrets.
 - A **chat workspace** at `/chat`: multiple conversations in `localStorage`,
@@ -74,6 +76,12 @@ Key features:
   and show/copy the base URL plus a curl example. `GET /v1/integration`
   reports the effective key/source, `POST`/`DELETE /v1/integration/key`
   rotate or remove it. The environment token always wins and is read-only.
+- A **local sharing board** at `/dashboard#/sharing`: posts with an optional
+  link, pasted image, author name, like toggle and comments, plus newest/top
+  sorting. Posts are persisted in `data/sharing.json` (0600); everyone who
+  opens the same bridge sees the same board. `GET/POST /v1/sharing`,
+  `POST /v1/sharing/like`, `POST /v1/sharing/comment` and
+  `DELETE /v1/sharing?id=…&client=…` back it.
 - An **idle (off-peak) channel** behind `ZCODE_ASYNC_ENABLED=1`:
   `POST /async/v1/messages` and `/async/v1/chat/completions` take an
   off-peak queue ticket, emit SSE keepalives while waiting, and forward the
@@ -218,6 +226,11 @@ dashboard key entirely.
 | `POST /v1/accounts/login` | — | body `{"label":"…"}` starts a device flow; returns `flow_id`, `authorize_url`, `expires_at` |
 | `GET /v1/accounts/login/status?flow_id=…` | — | `pending` / `ok` / `error` / `cancelled`, with the new account on success |
 | `POST /v1/accounts/login/cancel` | — | body `{"flow_id":"…"}` stops waiting for approval |
+| `GET /v1/sharing?sort=new\|top&client=…` | — | sharing board posts, like state and ownership for that browser client |
+| `POST /v1/sharing` | — | body `{"title","body","link","image","author","client"}` creates a post |
+| `POST /v1/sharing/like` | — | body `{"id":"…","client":"…"}` toggles one reaction |
+| `POST /v1/sharing/comment` | — | body `{"id","author","body","client"}` adds a reply |
+| `DELETE /v1/sharing?id=…&client=…` | — | removes a post when `client` matches its creator |
 | `GET /v1/integration` | — | downstream base URL, bearer key/source, default model, endpoint map |
 | `POST /v1/integration/key` | — | generate or rotate the persisted downstream key (409 when `ZCODE_BRIDGE_TOKEN` is set) |
 | `DELETE /v1/integration/key` | — | remove the persisted key (409 when `ZCODE_BRIDGE_TOKEN` is set) |
@@ -225,7 +238,7 @@ dashboard key entirely.
 | `POST /v1/claim` | — | body `{"plan_id":"…"}` or empty for highest priority |
 | `GET /v1/models` | — | live entitlements merged across plans (static fallback when billing is down) |
 | `GET /v1/quota` | — | per-entitlement grant rows (balance-first) |
-| `GET /dashboard` | — | console SPA: overview, inspector, usage, network, claim, settings (embedded assets, no CDN) |
+| `GET /dashboard` | — | console SPA: overview, accounts, chat, sharing, inspector, usage, network, claim, settings (embedded assets, no CDN) |
 | `GET /chat` | — | chat workspace: local conversations, streaming, stop/regenerate, import/export |
 | `GET /classic` | — | legacy single-file dashboard (previous tabbed page) |
 | `GET /v1/events` | — | SSE snapshot every second: `usage`, `net`, throttled `health` (token-gated when set) |
@@ -260,6 +273,7 @@ indexing, terminated with `[DONE]`).
 | `ZCODE_PLAN_JWT` | — | explicit plan JWT (highest-priority credential) |
 | `ZCODE_PLAN_JWT_FILE` | `./plan-jwt.json` | single-token fallback file |
 | `ZCODE_ACCOUNTS_FILE` | `data/accounts.json` | account ring store (0600) |
+| `ZCODE_SHARING_FILE` | `data/sharing.json` | local sharing board store (0600) |
 | `ZCODE_IDENTITY_DEVICE_MID` | auto (per-account UUID from login; random on legacy resolve) | UUID for billing/control calls; without it `/v1/quota` answers `3001` |
 | `ZCODE_SESSION_SEED` | `zcode-bridge` | HMAC seed for derived session ids |
 | `ZCODE_IDENTITY_CLIENT_LANGUAGE` / `_TIMEZONE` / `_PLATFORM` | auto | identity header overrides |

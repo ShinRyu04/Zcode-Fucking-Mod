@@ -126,6 +126,26 @@ func route(w http.ResponseWriter, r *http.Request) {
 		if requireObservabilityToken(w, r) {
 			handleIntegrationKeyDelete(w, r)
 		}
+	case r.Method == http.MethodGet && pathName == "/v1/sharing":
+		if requireObservabilityToken(w, r) {
+			handleSharingList(w, r)
+		}
+	case r.Method == http.MethodPost && pathName == "/v1/sharing":
+		if requireObservabilityToken(w, r) {
+			handleSharingCreate(w, r)
+		}
+	case r.Method == http.MethodPost && pathName == "/v1/sharing/like":
+		if requireObservabilityToken(w, r) {
+			handleSharingLike(w, r)
+		}
+	case r.Method == http.MethodPost && pathName == "/v1/sharing/comment":
+		if requireObservabilityToken(w, r) {
+			handleSharingComment(w, r)
+		}
+	case r.Method == http.MethodDelete && pathName == "/v1/sharing":
+		if requireObservabilityToken(w, r) {
+			handleSharingDelete(w, r)
+		}
 	case r.Method == http.MethodGet && pathName == "/v1/usage":
 		if requireObservabilityToken(w, r) {
 			handleUsage(w, r)

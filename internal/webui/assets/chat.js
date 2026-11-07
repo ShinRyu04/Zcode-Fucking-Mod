@@ -105,7 +105,7 @@
       i++;
     }
     flushPara(); flushList();
-    return out || '<p class="muted">(kosong)</p>';
+    return out || '<p class="muted">' + esc(ZB.tr('(kosong)')) + '</p>';
   }
   window.ZB.md = md;
 
@@ -124,7 +124,7 @@
     const rows = state.chats.filter(c => !q || c.title.toLowerCase().includes(q) || c.messages.some(m => String(m.content).toLowerCase().includes(q)));
     box.innerHTML = rows.length ? rows.map(c => `
       <div class="chat-item ${c.id === state.active ? 'active' : ''}" data-id="${c.id}">
-        <div class="chat-item-main"><b>${esc(c.title)}</b><span>${c.messages.length ? c.messages.length + ' pesan · ' + new Date(c.updated || c.created).toLocaleDateString('id-ID') : 'kosong'}</span></div>
+        <div class="chat-item-main"><b>${esc(c.title)}</b><span>${c.messages.length ? c.messages.length + ' pesan · ' + new Date(c.updated || c.created).toLocaleDateString(ZB.lang === 'en' ? 'en-GB' : 'id-ID') : 'kosong'}</span></div>
         <div class="chat-item-tools">
           <button type="button" data-act="rename" title="Ganti nama">Ubah</button>
           <button type="button" data-act="delete" title="Hapus">Hapus</button>
@@ -273,11 +273,11 @@
           }
         }
       }
-      if (!assistant.content) assistant.content = '(tidak ada balasan)';
+      if (!assistant.content) assistant.content = ZB.tr('(tidak ada balasan)');
     } catch (e) {
       if (e.name === 'AbortError') {
-        if (!assistant.content) assistant.content = '(dihentikan)';
-        else assistant.content += '\n\n_(dihentikan)_';
+        if (!assistant.content) assistant.content = ZB.tr('(dihentikan)');
+        else assistant.content += '\n\n_(' + ZB.tr('(dihentikan)').replace(/[()]/g, '') + ')_';
         ZB.toast('Stream dihentikan', '');
       } else {
         assistant.content = assistant.content || ('**Gagal:** ' + e.message);

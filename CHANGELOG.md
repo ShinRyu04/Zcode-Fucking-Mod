@@ -19,6 +19,15 @@ versions follow [SemVer](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Local sharing board at `/dashboard#/sharing`: title, message, link, image
+  attachment up to 120 KB, author name, one like toggle per browser, comments,
+  and newest/top sorting. Persisted in `data/sharing.json` (0600) and backed by
+  `GET/POST /v1/sharing`, `POST /v1/sharing/like`,
+  `POST /v1/sharing/comment` and `DELETE /v1/sharing`.
+- Bilingual dashboard: a topbar **EN/ID** toggle switches the `/dashboard`
+  console (overview, accounts, chat, inspector, usage, network, claim,
+  settings) to English. Indonesian remains the default; model ids, chat
+  message bodies and code are left untouched.
 - Console SPA at `/dashboard` (hash router, dark/light, embedded CSS/JS, no
   CDN): overview, inspector, usage, network, claim and read-only settings.
   The previous tabbed page moved to `/classic`; `/chat` is the new chat
