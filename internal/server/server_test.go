@@ -326,7 +326,8 @@ func TestDashboardServesStatusPage(t *testing.T) {
 	for _, want := range []string{"zcode-bridge", "/health", "/quota", "id=\"health\"", "id=\"quota\"",
 		"Inspector", "id=\"panel-inspector\"", "/inspect?limit=200",
 		"Penggunaan", "id=\"panel-usage\"", "renderUsageChart", "/v1/usage",
-		"Playground", "id=\"panel-playground\"", "gaugeCard", "renderRolling", "/overlay"} {
+		"Playground", "id=\"panel-playground\"", "gaugeCard", "renderRolling", "/overlay",
+		"Aplikasi ZCode", "id=\"udchart\"", "renderDesktop", "desktopChart", "id=\"udrange\""} {
 		if !strings.Contains(page, want) {
 			t.Fatalf("dashboard page missing %q", want)
 		}
@@ -1095,5 +1096,60 @@ func TestOverlayServesSpeedReadout(t *testing.T) {
 		if !strings.Contains(page, want) {
 			t.Fatalf("overlay page missing %q", want)
 		}
+	}
+}
+
+func TestUsageEndpointIncludesDesktop(t *testing.T) {
+	setupBridge(t)
+	usage.ResetForTest(t.TempDir())
+	t.Setenv("ZCODE_DB", filepath.Join("..", "sqlite", "testdata", "usage.db"))
+	t.Setenv("ZCODE_DESKTOP", "")
+	resetDesktopForTest()
+	t.Cleanup(resetDesktopForTest)
+
+	status, text, body := doRequest(t, "GET", "/v1/usage", nil)
+	if status != 200 {
+		t.Fatalf("usage status %d: %s", status, text)
+	}
+	block, ok := body["desktop"].(map[string]any)
+	if !ok {
+		t.Fatalf("desktop block missing: %v", body)
+	}
+	if block["available"] != true {
+		t.Fatalf("desktop unavailable: %v", block)
+	}
+	snap := block["snapshot"].(map[string]any)
+	all := snap["all_time"].(map[string]any)
+	if all["requests"].(float64) != 2 {
+		t.Fatalf("desktop all-time requests = %v", all["requests"])
+	}
+	models := snap["models"].([]any)
+	if len(models) != 2 {
+		t.Fatalf("desktop models = %v", models)
+	}
+	ranges := snap["ranges"].([]any)
+	if len(ranges) != 4 {
+		t.Fatalf("desktop ranges = %v", ranges)
+	}
+	if got := len(ranges[0].(map[string]any)["buckets"].([]any)); got != 90 {
+		t.Fatalf("15m buckets = %d", got)
+	}
+}
+
+func TestUsageEndpointDesktopUnavailable(t *testing.T) {
+	setupBridge(t)
+	usage.ResetForTest(t.TempDir())
+	t.Setenv("ZCODE_DB", filepath.Join(t.TempDir(), "missing.sqlite"))
+	t.Setenv("ZCODE_DESKTOP", "")
+	resetDesktopForTest()
+	t.Cleanup(resetDesktopForTest)
+
+	status, text, body := doRequest(t, "GET", "/v1/usage", nil)
+	if status != 200 {
+		t.Fatalf("usage status %d: %s", status, text)
+	}
+	block := body["desktop"].(map[string]any)
+	if block["available"] != false {
+		t.Fatalf("desktop should be unavailable: %v", block)
 	}
 }

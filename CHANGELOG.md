@@ -19,6 +19,20 @@ versions follow [SemVer](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- `internal/sqlite`: a dependency-free, read-only SQLite reader (file header,
+  WAL with checksum-validated committed prefix, table b-trees, overflow
+  payloads, record decoding, column names parsed from `CREATE TABLE`). Reads
+  the 127 MB ZCode database in ~25 ms.
+- `internal/desktop`: ZCode CLI usage aggregation — today/all-time totals,
+  average and peak t/s, 7-day high (≥300 tokens and ≥1 s) and 7-day average,
+  per-model stats, 15 m/1 h/6 h/24 h buckets (10 s/40 s/4 min/16 min), in-flight
+  sessions from `message` rows without a completion stamp.
+- `/v1/usage` now carries a separate `desktop` object (path, availability,
+  snapshot); `ZCODE_DB` and `ZCODE_DESKTOP` control it.
+- Dashboard **Penggunaan**: "Aplikasi ZCode" section with the same numbers,
+  a range switch (15 mnt / 1 jam / 6 jam / 24 jam), a curve/per-model switch,
+  and an explicit note that these rows come from `db.sqlite`, not from bridge
+  traffic.
 - Dashboard speed panel: three native gauges (last request t/s, today's
   average, cache-hit rate), a 15-minute rolling chart at 10-second resolution,
   and exact token counts instead of abbreviated ones. `GET /overlay` serves the

@@ -69,6 +69,7 @@ footer{display:flex;justify-content:space-between;align-items:center;gap:12px;fl
 button,.btn{background:transparent;border:1px solid var(--line);border-radius:8px;color:var(--fg);font:inherit;font-size:13px;padding:7px 14px;cursor:pointer;text-decoration:none;display:inline-block}
 button:hover,.btn:hover{border-color:var(--ok)}
 button:active{background:#1d2330}
+button[aria-pressed=true]{border-color:var(--ok);color:var(--ok);background:rgba(52,211,153,.08)}
 button.danger:hover{border-color:var(--bad);color:var(--bad)}
 label{cursor:pointer;display:inline-flex;align-items:center;gap:6px}
 :focus-visible{outline:2px solid var(--ok);outline-offset:2px}
@@ -199,6 +200,14 @@ pre{background:#0f131b;border:1px solid var(--line);border-radius:8px;padding:12
 <div id="uchart"></div>
 <h3>Per model</h3>
 <div id="utable" class="tablewrap" aria-live="polite"></div>
+<h3>Aplikasi ZCode <span class="dim" style="text-transform:none;letter-spacing:0;font-weight:400">· dibaca dari db.sqlite, terpisah dari trafik bridge</span></h3>
+<div class="meta" id="udsum"></div>
+<div class="toolbar">
+<div class="toolbtns" id="udrange" role="group" aria-label="Rentang grafik aplikasi"></div>
+<div class="toolbtns" id="udview" role="group" aria-label="Tampilan grafik aplikasi"></div>
+</div>
+<div id="udchart"></div>
+<div id="udmodels" class="tablewrap" aria-live="polite"></div>
 </div>
 </section>
 
@@ -514,6 +523,7 @@ byId('imethod').addEventListener('change', renderList);
 byId('istatus').addEventListener('change', renderList);
 byId('iq').addEventListener('input', renderList);
 byId('irefresh').addEventListener('click', loadInspector);
+bindDesktopControls();
 byId('iclear').addEventListener('click', function(){
   if(!window.confirm('Hapus semua entri yang terekam?')) return;
   api('/inspect',{method:'DELETE'}).then(function(){
@@ -622,6 +632,7 @@ function renderRolling(recent){
     + '<div class="legend"><span>puncak ' + fmtTps(peak) + ' tok/dtk</span><span class="dim">skala 0-' + yMax + ' tok/dtk</span></div>';
 }
 function renderUsage(res){
+  renderDesktop(res.desktop);
   var today = res.today || {}, allTime = res.all_time || {};
   byId('ustate').textContent = today.requests ? today.requests + ' permintaan hari ini' : '';
   var last = null;
@@ -669,6 +680,126 @@ function renderUsage(res){
       + '<td class="num">' + fmtTps(m.avg_tps) + '</td></tr>';
   }).join('');
   byId('utable').innerHTML = head + rows + '</tbody></table>';
+}
+// ---- desktop application database (ZCode CLI db.sqlite) ----
+var DUSAGE = {
+  range: localStorage.getItem('zcode.deskRange') || '15m',
+  view: localStorage.getItem('zcode.deskView') || 'all',
+  snap: null
+};
+var DRANGES = [['15m', '15 mnt'], ['1h', '1 jam'], ['6h', '6 jam'], ['24h', '24 jam']];
+function hhmm(ms){
+  var d = new Date(Number(ms) || 0);
+  return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+}
+function desktopChart(snap){
+  var key = DUSAGE.range;
+  var range = (snap.ranges || []).filter(function(r){ return r.key === key; })[0];
+  if(!range) return '<div class="emptystate">Rentang ' + esc(key) + ' tidak tersedia.</div>';
+  var buckets = range.buckets || [], n = buckets.length;
+  var peak = 0, calls = 0;
+  buckets.forEach(function(b){ if(Number(b.tps) > peak) peak = Number(b.tps); calls += Number(b.calls) || 0; });
+  if(n === 0) return '<div class="emptystate">Rentang kosong.</div>';
+  if(peak <= 0 && calls === 0) return '<div class="emptystate">Belum ada pemanggilan selesai pada rentang ini.</div>';
+  var yMax = Math.max(60, Math.ceil(peak / 60) * 60), W = 600, H = 130;
+  var line = buckets.map(function(b, i){
+    return (i ? 'L' : 'M') + (i / (n - 1) * W).toFixed(1) + ' ' + (H - (Number(b.tps) || 0) / yMax * H).toFixed(1);
+  }).join(' ');
+  var grid = [0.25, 0.5, 0.75].map(function(f){
+    var y = (H - f * H).toFixed(1);
+    return '<line x1="0" y1="' + y + '" x2="' + W + '" y2="' + y + '" stroke="#1c222e" vector-effect="non-scaling-stroke"/>';
+  }).join('');
+  var anchors = [0, Math.floor(n / 2), n - 1];
+  var ticks = anchors.map(function(i){
+    var x = i / (n - 1) * W;
+    var anchor = i === 0 ? 'start' : (i === n - 1 ? 'end' : 'middle');
+    return '<text x="' + x.toFixed(1) + '" y="' + (H + 13) + '" text-anchor="' + anchor + '" style="fill:#64748b;font-size:9px">' + hhmm(buckets[i].at) + '</text>';
+  }).join('');
+  return '<div class="chartwrap"><svg viewBox="0 0 ' + W + ' ' + (H + 18) + '" role="img" aria-label="Kecepatan aplikasi ZCode ' + esc(key) + '" preserveAspectRatio="none">'
+    + grid + '<path d="' + line + '" fill="none" stroke="#38bdf8" stroke-width="1.6" vector-effect="non-scaling-stroke"/>' + ticks + '</svg></div>'
+    + '<div class="legend"><span>puncak ' + fmtTps(peak) + ' tok/dtk</span>'
+    + '<span class="dim">' + calls + ' pemanggilan · ' + Math.round((range.bucket_ms || 0) / 1000) + ' detik per titik</span></div>';
+}
+function desktopModels(snap){
+  var rows = snap.models || [];
+  if(!rows.length) return '<div class="emptystate">Belum ada model yang tercatat di database aplikasi.</div>';
+  var head = '<table><thead><tr><th>Model</th><th class="num">Panggilan</th><th class="num">Token</th><th class="num">Porsi</th><th class="num">Rata-rata</th><th class="num">Puncak</th></tr></thead><tbody>';
+  var body = rows.map(function(m){
+    return '<tr><td class="mono">' + esc(m.model) + '</td>'
+      + '<td class="num">' + fmtN(m.requests) + '</td>'
+      + '<td class="num">' + fmtN(m.tokens) + '</td>'
+      + '<td class="num">' + (Number(m.share) * 100).toFixed(1) + '%</td>'
+      + '<td class="num">' + fmtTps(m.avg_tps) + '</td>'
+      + '<td class="num">' + fmtTps(m.peak_tps) + '</td></tr>';
+  }).join('');
+  return head + body + '</tbody></table>';
+}
+function desktopButtons(){
+  byId('udrange').innerHTML = DRANGES.map(function(r){
+    return '<button type="button" data-dr="' + r[0] + '" aria-pressed="' + (DUSAGE.range === r[0]) + '">' + r[1] + '</button>';
+  }).join('');
+  byId('udview').innerHTML = [['all', 'Keseluruhan'], ['model', 'Per model']].map(function(v){
+    return '<button type="button" data-dv="' + v[0] + '" aria-pressed="' + (DUSAGE.view === v[0]) + '">' + v[1] + '</button>';
+  }).join('');
+}
+function desktopPaint(){
+  desktopButtons();
+  var snap = DUSAGE.snap;
+  if(!snap) return;
+  if(DUSAGE.view === 'model'){
+    byId('udchart').innerHTML = desktopModels(snap);
+    byId('udmodels').innerHTML = '';
+  } else {
+    byId('udchart').innerHTML = desktopChart(snap);
+    byId('udmodels').innerHTML = desktopModels(snap);
+  }
+}
+function renderDesktop(block){
+  block = block || {};
+  if(!block.available || !block.snapshot){
+    byId('udsum').innerHTML = '<div><span>Status</span><b>tidak terbaca</b></div>'
+      + '<div><span>Path</span><b class="mono">' + esc(block.path || '-') + '</b></div>'
+      + '<div><span>Catatan</span><b>' + esc(block.error || 'database aplikasi belum ada') + '</b></div>';
+    byId('udrange').innerHTML = '';
+    byId('udview').innerHTML = '';
+    byId('udchart').innerHTML = '<div class="emptystate">Angka aplikasi ZCode hanya muncul kalau <code>db.sqlite</code> bisa dibaca. Trafik lewat bridge tetap terukur di atas.</div>';
+    byId('udmodels').innerHTML = '';
+    DUSAGE.snap = null;
+    return;
+  }
+  var snap = block.snapshot, t = snap.today || {};
+  DUSAGE.snap = snap;
+  var tokens = (Number(t.input_tokens) || 0) + (Number(t.output_tokens) || 0) + (Number(t.reasoning_tokens) || 0) + (Number(t.cache_creation_tokens) || 0);
+  var cards = [
+    ['Panggilan hari ini', fmtN(t.requests)],
+    ['Token hari ini', fmtN(tokens)],
+    ['Rata-rata hari ini', fmtTps(t.avg_tps) + ' tok/dtk'],
+    ['Tertinggi 7 hari', fmtTps(snap.high_7d) + ' tok/dtk'],
+    ['Rata-rata 7 hari', fmtTps(snap.avg_7d) + ' tok/dtk'],
+    ['Sedang berjalan', fmtN(snap.in_flight)],
+    ['Sesi', fmtN(snap.sessions)],
+    ['Aktivitas terakhir', snap.last_activity ? whenISO(new Date(Number(snap.last_activity)).toISOString()) : '-']
+  ];
+  byId('udsum').innerHTML = cards.map(function(c){
+    return '<div><span>' + esc(c[0]) + '</span><b>' + esc(c[1]) + '</b></div>';
+  }).join('');
+  desktopPaint();
+}
+function bindDesktopControls(){
+  byId('udrange').addEventListener('click', function(e){
+    var b = e.target.closest('button[data-dr]');
+    if(!b) return;
+    DUSAGE.range = b.getAttribute('data-dr');
+    localStorage.setItem('zcode.deskRange', DUSAGE.range);
+    desktopPaint();
+  });
+  byId('udview').addEventListener('click', function(e){
+    var b = e.target.closest('button[data-dv]');
+    if(!b) return;
+    DUSAGE.view = b.getAttribute('data-dv');
+    localStorage.setItem('zcode.deskView', DUSAGE.view);
+    desktopPaint();
+  });
 }
 function loadUsage(){
   api('/v1/usage').then(function(res){

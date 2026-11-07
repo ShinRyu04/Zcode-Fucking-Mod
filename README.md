@@ -108,7 +108,7 @@ curl -s http://127.0.0.1:20131/v1/chat/completions \
 | `GET /inspect?id=N` | — | one captured exchange with headers and bodies |
 | `GET /inspect?limit=N&full=1` | — | JSON export with bodies (≤50 entries) |
 | `DELETE /inspect` | — | drop every captured exchange |
-| `GET /v1/usage` | — | token + throughput aggregates: `today`, `all_time`, `recent` (needs `ZCODE_BRIDGE_TOKEN` when set) |
+| `GET /v1/usage` | — | token + throughput aggregates: `today`, `all_time`, `recent`, plus a separate `desktop` block read from the ZCode CLI database (needs `ZCODE_BRIDGE_TOKEN` when set) |
 | `GET /health` | — | lane, credential ring, device-mid state |
 
 Streaming: Anthropic callers get the upstream SSE stream untouched; OpenAI
@@ -143,6 +143,8 @@ indexing, terminated with `[DONE]`).
 | `ZCODE_CAPTURE_SIZE` | `200` | inspector ring capacity (exchanges kept) |
 | `ZCODE_CAPTURE_BODY_MAX` | `65536` | bytes of each body the inspector keeps; longer bodies are truncated and flagged |
 | `ZCODE_USAGE_DIR` | `data` | where `usage-YYYYMMDD.jsonl` rows are appended (0700 dir, 0600 file) |
+| `ZCODE_DB` | `~/.zcode/cli/db/db.sqlite` | ZCode CLI usage database read (never written) for the desktop half of the Penggunaan tab |
+| `ZCODE_DESKTOP` | *(on)* | `0` = stop reading the desktop database entirely |
 
 ## Lane rules (verified against production)
 
@@ -289,16 +291,29 @@ Changes made in this fork, relative to upstream `azrinaldi/zcode-bridge`:
    with a 15-minute rolling chart at 10-second resolution and a per-request
    tier chart; `GET /overlay` is the floating-widget equivalent — run
    `overlay.cmd` and it opens the page in an Edge app window pinned on top
-   (`overlay.ps1` does the pinning). The panel's network/upload
-   counters are deliberately not ported: they read the desktop app's
-   `db.sqlite` and process IO counters, which the bridge cannot and should not
-   see. Files: `internal/usage`, `internal/server/usage.go`,
-   `internal/server/overlay.go`, `internal/server/dashboard.go`.
+   (`overlay.ps1` does the pinning). Files: `internal/usage`,
+   `internal/server/usage.go`, `internal/server/overlay.go`,
+   `internal/server/dashboard.go`.
 7. **Dashboard playground**: a **Playground** tab posts a prompt to
    `/v1/chat/completions` through the same lane (streaming or not), renders the
    answer and the reasoning block, and reports model/latency/tokens. Useful to
    verify a model id or a tool profile without wiring a client. File:
    `internal/server/dashboard.go`.
+
+8. **Desktop usage database, read without a driver**: the panel's second data
+   source — the ZCode CLI's `db.sqlite` — is now read by a small pure-Go
+   reader (`internal/sqlite`) that parses the file header, the WAL (including
+   checksums and the committed prefix), table b-trees, overflow chains and
+   record serialisation. No cgo, no dependency, no lock and no write: the
+   desktop application keeps the file open in WAL mode and never notices.
+   `internal/desktop` turns those rows into today/all-time totals, average and
+   peak t/s, the 7-day high (gated at ≥300 generated tokens and ≥1 s, the same
+   rule the panel uses to reject millisecond noise), per-model trends, 90-bucket
+   charts for 15 m / 1 h / 6 h / 24 h, and the "a call is running" signal from
+   `message` rows with no completion stamp. `/v1/usage` exposes it as a
+   separate `desktop` object so bridge-measured and application-reported
+   numbers are never silently mixed; the dashboard's **Penggunaan** tab shows
+   both side by side with its own range and view switches.
 
 ## Credits
 
