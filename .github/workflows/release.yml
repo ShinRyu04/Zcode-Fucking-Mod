@@ -50,6 +50,15 @@ jobs:
           if [ "$GOOS" = "windows" ]; then ext=".exe"; fi
           go build -trimpath -ldflags='-s -w' \
             -o "dist/zcode-bridge-$GOOS-$GOARCH$ext" ./cmd/zcode-bridge
+      - name: Build companion (Windows only)
+        if: matrix.goos == 'windows'
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        run: |
+          go build -trimpath -ldflags='-s -w' \
+            -o "dist/zcode-companion-$GOOS-$GOARCH.exe" ./cmd/zcode-companion
       - uses: actions/upload-artifact@v4
         with:
           name: zcode-bridge-${{ matrix.goos }}-${{ matrix.goarch }}
