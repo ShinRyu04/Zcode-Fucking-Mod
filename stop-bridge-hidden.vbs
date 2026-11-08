@@ -1,3 +1,5 @@
 ' Stop zcode-bridge TANPA jendela console.
 Set sa = CreateObject("Shell.Application")
-sa.ShellExecute "cmd.exe", "/c D:\ToolsAI\zcode-bridge\stop-bridge.cmd", "D:\ToolsAI\zcode-bridge", "open", 0
+Set fso = CreateObject("Scripting.FileSystemObject")
+here = fso.GetParentFolderName(WScript.ScriptFullName)
+sa.ShellExecute "cmd.exe", "/c stop-bridge.cmd", here, "open", 0
