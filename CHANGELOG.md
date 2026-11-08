@@ -23,6 +23,11 @@ versions follow [SemVer](https://semver.org/).
   including their tray toggles and position file. The companion keeps the tray,
   autostart, update check, and bridge supervision.
 
+### Fixed
+- Claim discovery derives `X-Device-Mid` from the active account when no
+  environment override is set, so marketing/banner campaigns remain visible
+  after a direct binary launch.
+
 ### Added
 - Local sharing board at `/dashboard#/sharing`: title, message, link, image
   attachment up to 120 KB, author name, one like toggle per browser, comments,

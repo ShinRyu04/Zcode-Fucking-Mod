@@ -241,7 +241,20 @@ func orUnknown(s string) string {
 	return s
 }
 
+func ensureDeviceMid() {
+	if identity.ResolveDeviceMid() != "" {
+		return
+	}
+	for _, a := range accounts.Usable(nil) {
+		if id := strings.TrimSpace(a.DeviceID); id != "" {
+			os.Setenv("ZCODE_IDENTITY_DEVICE_MID", id)
+			return
+		}
+	}
+}
+
 func serve() {
+	ensureDeviceMid()
 	host := strings.TrimSpace(os.Getenv("HOST"))
 	if host == "" {
 		host = "127.0.0.1"
