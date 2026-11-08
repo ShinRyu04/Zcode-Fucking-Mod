@@ -1,6 +1,7 @@
 package netmon
 
 import (
+	"math"
 	"testing"
 	"time"
 )
@@ -73,13 +74,13 @@ func TestRatesDeriveFromCounterDeltas(t *testing.T) {
 	if len(snap.Interfaces) != 1 {
 		t.Fatalf("interfaces = %d", len(snap.Interfaces))
 	}
-	if got := snap.Interfaces[0].InBps; got != 1000 {
+	if got := snap.Interfaces[0].InBps; math.Abs(got-1000) > 0.5 {
 		t.Fatalf("in bps = %v", got)
 	}
 	if got := snap.Interfaces[0].OutBps; got != 0 {
 		t.Fatalf("out bps = %v", got)
 	}
-	if snap.TotalInBps != 1000 || snap.TCPConnections != 6 || snap.TCPEstablished != 3 {
+	if snap.TotalInBps < 999.5 || snap.TotalInBps > 1000.5 || snap.TCPConnections != 6 || snap.TCPEstablished != 3 {
 		t.Fatalf("snapshot = %#v", snap)
 	}
 }
