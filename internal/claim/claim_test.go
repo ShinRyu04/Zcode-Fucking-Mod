@@ -2,11 +2,15 @@ package claim
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+
+	"github.com/azrinaldi/zcode-bridge/internal/captcha"
 )
 
 func TestListAndClaimBest(t *testing.T) {
@@ -75,7 +79,45 @@ func TestListAndClaimBest(t *testing.T) {
 	}
 }
 
+func TestClaimAutoMintsCaptcha(t *testing.T) {
+	raw, _ := json.Marshal(map[string]any{"certifyId": "c1", "securityToken": strings.Repeat("s", 60), "isSign": true})
+	param := base64.StdEncoding.EncodeToString(raw)
+	var hits int
+	var gotParam, gotRegion string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		hits++
+		if hits == 1 {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]any{"code": 3007, "message": "captcha verify failed"})
+			return
+		}
+		gotParam = r.Header.Get("X-Aliyun-Captcha-Verify-Param")
+		gotRegion = r.Header.Get("X-Aliyun-Captcha-Verify-Region")
+		json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": map[string]any{"plan": map[string]any{"starts_at": 1, "ends_at": 2}}})
+	}))
+	defer srv.Close()
+	t.Setenv("ZCODE_CLAIM_ORIGIN", srv.URL)
+	t.Setenv("ZCODE_IDENTITY_DEVICE_MID", "11111111-2222-3333-4444-555555555555")
+	t.Setenv("ZCODE_CAPTCHA_CMD", "fake-minter")
+	restoreMint := captcha.SetRunnerForTest(func(context.Context, string) (string, error) {
+		return "VERIFY_PARAM=" + param + "\nVERIFY_REGION=sgp\n", nil
+	})
+	defer restoreMint()
+	restoreJWT := SetJWTResolverForTest(func() string { return "jwt" })
+	defer restoreJWT()
+
+	out, err := Claim(context.Background(), "p1")
+	if err != nil || !out.OK {
+		t.Fatalf("out=%+v err=%v", out, err)
+	}
+	if hits != 2 || gotParam != param || gotRegion != "sgp" {
+		t.Fatalf("hits=%d param=%q region=%q", hits, gotParam, gotRegion)
+	}
+}
+
 func TestClaimCaptchaBlocked(t *testing.T) {
+	t.Setenv("ZCODE_CAPTCHA_CMD", "")
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)

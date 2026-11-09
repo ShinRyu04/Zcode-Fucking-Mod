@@ -105,3 +105,14 @@ stream chat -> `/v1/messages` stream -> tool round-trip with follow-up
    The gateway validates the shape, not those tokens (verified live: a
    sanitized path still passes, personal paths leak otherwise).
 4. `go test ./...` must stay green, then run the live matrix in section 3.
+
+## 7. Optional Egress & Captcha Env
+
+- `ZCODE_PROXIES` — http(s) proxy URLs (comma/semicolon/space separated).
+  Every upstream attempt on the chat and claim paths takes the next proxy
+  round-robin. No socks5, nothing bundled.
+- `ZCODE_CAPTCHA_CMD` — external captcha minter. On a `3007` claim the
+  bridge runs it once and expects `VERIFY_PARAM=<param>` (optional
+  `VERIFY_REGION=<region>`) on stdout, then retries with the token. Params
+  with a short `securityToken` are rejected. **No solver ships in this
+  repo**; supplying one is the operator's call and risk.

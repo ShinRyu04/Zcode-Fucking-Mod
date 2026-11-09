@@ -29,7 +29,7 @@ import (
 	"github.com/azrinaldi/zcode-bridge/internal/update"
 )
 
-const version = "0.1.6-mod"
+const version = "0.1.7-mod"
 
 func envInt(key string, fallback int) int {
 	if v := strings.TrimSpace(os.Getenv(key)); v != "" {

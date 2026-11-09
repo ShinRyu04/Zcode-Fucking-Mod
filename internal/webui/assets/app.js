@@ -181,6 +181,7 @@ const EN_TEXT = {
   'Klaim': 'Claim',
   'Token, kecepatan, dan tren per model.': 'Tokens, speed, and per-model trends.',
   'Klaim sekarang': 'Claim now',
+  'Klaim semua akun': 'Claim all accounts',
   'Cek plan weekend/trial yang tersedia lalu klaim.': 'Check available weekend/trial plans, then claim.',
   'Tidak ada plan yang bisa diklaim.': 'No plans available to claim.',
   'Tekan “Cek plan” untuk memindai penawaran.': 'Press “Check plans” to scan offers.',
@@ -1071,7 +1072,7 @@ function renderNetwork() {
 /* ---------------- claim ---------------- */
 function pageClaim(view) {
   view.innerHTML = skeleton('Klaim plan', 'Cek plan weekend/trial yang tersedia lalu klaim.') + `
-  <div class="toolbar"><button class="btn" id="cscan" type="button">Cek plan</button><button class="btn primary" id="cnow" type="button">Klaim sekarang</button><span class="small muted" id="cstat"></span></div>
+  <div class="toolbar"><button class="btn" id="cscan" type="button">Cek plan</button><button class="btn primary" id="cnow" type="button">Klaim sekarang</button><button class="btn" id="call" type="button">Klaim semua akun</button><span class="small muted" id="cstat"></span></div>
   <div class="grid g3">
     <div class="card stat"><span class="k">Plan terdeteksi</span><span class="v smallv" id="csum-plans">—</span><span class="s">dari pemindaian terakhir</span></div>
     <div class="card stat"><span class="k">Pemindaian terakhir</span><span class="v smallv" id="csum-scan">—</span><span class="s">waktu lokal</span></div>
@@ -1081,6 +1082,7 @@ function pageClaim(view) {
   <div class="card mt14"><h2>Riwayat klaim</h2><div id="chist"><div class="empty">Memuat…</div></div></div>`;
   $('#cscan').onclick = () => scanClaim();
   $('#cnow').onclick = () => claimNow();
+  $('#call').onclick = () => claimAll();
   scanClaim();
 }
 
@@ -1144,6 +1146,24 @@ function solveClaimCaptcha() {
       }
     }));
   });
+}
+
+async function claimAll() {
+  const btn = $('#call');
+  if (btn) btn.disabled = true;
+  try {
+    const r = await api('/v1/claim/all', { method: 'POST', body: '{}' });
+    const rows = r.results || [];
+    const ok = rows.filter(x => x.ok).length;
+    const need = rows.filter(x => x.status === 'perlu-app').length;
+    const msg = (ZB.lang === 'en' ? `${ok}/${rows.length} claimed` : `${ok}/${rows.length} diklaim`) + (need ? (ZB.lang === 'en' ? ` · ${need} need the app` : ` · ${need} perlu app`) : '');
+    toast(msg, ok ? 'ok' : 'bad');
+    scanClaim();
+  } catch (e) {
+    toast(e.message, 'bad');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
 }
 
 async function claimNow() {

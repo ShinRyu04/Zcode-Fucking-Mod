@@ -16,6 +16,21 @@ versions follow [SemVer](https://semver.org/).
 ### Changed
 - `.gitignore` now blocks `logs/`, `data/`, JWT files and `*.bak-*` backups.
 
+## [0.1.7-mod] - 2026-11-09
+
+### Added
+- Egress proxy rotation: `ZCODE_PROXIES` (comma/semicolon/space separated
+  http(s) proxy URLs) makes every upstream attempt (chat and claim paths)
+  ride the next proxy in round-robin order.
+- Automated captcha minting hook: `ZCODE_CAPTCHA_CMD` names a program that
+  prints `VERIFY_PARAM=<param>` (and optionally `VERIFY_REGION=<region>`);
+  when the gateway answers 3007 the claim retries once with the minted
+  token. Degraded tokens (short securityToken) are rejected. No solver is
+  bundled.
+- `POST /v1/claim/all` + "Klaim semua akun" button: sweep every stored
+  account, list its plans, claim the best one, and report per-account
+  status (`ok`/`kosong`/`perlu-app`/`gagal`).
+
 ## [0.1.6-mod] - 2026-11-09
 
 ### Added

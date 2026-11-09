@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/azrinaldi/zcode-bridge/internal/accounts"
 	"github.com/azrinaldi/zcode-bridge/internal/claim"
 )
 
@@ -86,6 +87,52 @@ func handleClaimVerificationConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sendJSON(w, 200, map[string]any{"ok": true, "config": cfg})
+}
+
+// handleClaimAll sweeps every stored account: list its plans, claim the
+// best one, and report per-account results. With ZCODE_CAPTCHA_CMD set the
+// captcha is minted automatically; otherwise captcha-gated accounts report
+// "perlu-app".
+func handleClaimAll(w http.ResponseWriter, r *http.Request) {
+	base, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
+	defer cancel()
+	type result struct {
+		Account string `json:"account"`
+		Plan    string `json:"plan,omitempty"`
+		OK      bool   `json:"ok"`
+		Status  string `json:"status"`
+		Message string `json:"message,omitempty"`
+	}
+	results := []result{}
+	for _, a := range accounts.List() {
+		actx, acancel := context.WithTimeout(base, 90*time.Second)
+		plans, err := claim.ListPlansFor(actx, a.JWT, a.DeviceID)
+		if err != nil {
+			results = append(results, result{Account: a.ID, Status: "gagal", Message: err.Error()})
+			acancel()
+			continue
+		}
+		if len(plans) == 0 {
+			results = append(results, result{Account: a.ID, Status: "kosong", Message: "tidak ada plan"})
+			acancel()
+			continue
+		}
+		out, err := claim.ClaimWithVerificationFor(actx, a.JWT, a.DeviceID, plans[0].PlanID, "", "")
+		acancel()
+		res := result{Account: a.ID, Plan: plans[0].PlanID}
+		switch {
+		case err == nil && out.OK:
+			res.OK, res.Status = true, "ok"
+		case err == claim.ErrCaptchaRequired:
+			res.Status, res.Message = "perlu-app", out.Message
+		case err != nil:
+			res.Status, res.Message = "gagal", err.Error()
+		default:
+			res.Status, res.Message = "ditolak", out.Message
+		}
+		results = append(results, res)
+	}
+	sendJSON(w, 200, map[string]any{"ok": true, "results": results})
 }
 
 // handleClaimNow claims the configured plan or the highest-priority live one.

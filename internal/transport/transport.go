@@ -42,6 +42,7 @@ import (
 	"github.com/azrinaldi/zcode-bridge/internal/accounts"
 	"github.com/azrinaldi/zcode-bridge/internal/auth"
 	"github.com/azrinaldi/zcode-bridge/internal/identity"
+	"github.com/azrinaldi/zcode-bridge/internal/netx"
 	"github.com/azrinaldi/zcode-bridge/internal/systemprompt"
 )
 
@@ -361,6 +362,7 @@ func SendAnthropic(o SendOpts) (*http.Response, error) {
 	if client == nil {
 		client = &http.Client{Timeout: timeout}
 	}
+	rotator := netx.FromEnv()
 
 	var lastErr *UpstreamError
 	tried := map[string]bool{}
@@ -380,7 +382,11 @@ func SendAnthropic(o SendOpts) (*http.Response, error) {
 		if acct == nil {
 			break
 		}
-		res, err := runAccount(ctx, client, *acct, o, timeout)
+		wire := client
+		if rotator != nil {
+			wire = rotator.Client(client, attempt, timeout)
+		}
+		res, err := runAccount(ctx, wire, *acct, o, timeout)
 		if err == nil {
 			if acct.ID != "" {
 				accounts.ClearCooldown(acct.ID)

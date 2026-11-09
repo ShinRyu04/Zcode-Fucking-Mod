@@ -23,8 +23,20 @@ import (
 
 	"github.com/azrinaldi/zcode-bridge/internal/accounts"
 	"github.com/azrinaldi/zcode-bridge/internal/auth"
+	"github.com/azrinaldi/zcode-bridge/internal/captcha"
 	"github.com/azrinaldi/zcode-bridge/internal/identity"
+	"github.com/azrinaldi/zcode-bridge/internal/netx"
 )
+
+var claimProxies = netx.FromEnv()
+
+func newClaimClient(timeout time.Duration, attempt int) *http.Client {
+	base := &http.Client{Timeout: timeout}
+	if claimProxies != nil {
+		return claimProxies.Client(base, attempt, timeout)
+	}
+	return base
+}
 
 // Plan is one claimable manual-claim campaign.
 type Plan struct {
@@ -184,11 +196,15 @@ func claimDeviceMid() string {
 }
 
 func headerAuth(jwt string) map[string]string {
+	return headerAuthFor(jwt, claimDeviceMid())
+}
+
+func headerAuthFor(jwt, mid string) map[string]string {
 	h := map[string]string{}
 	if jwt != "" {
 		h["Authorization"] = "Bearer " + jwt
 	}
-	if mid := claimDeviceMid(); mid != "" {
+	if mid != "" {
 		h["X-Device-Mid"] = mid
 	}
 	return h
@@ -197,16 +213,20 @@ func headerAuth(jwt string) map[string]string {
 // ListPlans merges the billing preview and the marketing banner face,
 // deduped by plan id (preview wins), ordered by descending priority.
 func ListPlans(ctx context.Context) ([]Plan, error) {
+	return ListPlansFor(ctx, resolveJWT(), claimDeviceMid())
+}
+
+// ListPlansFor lists claimable plans for one account's credential pair.
+func ListPlansFor(ctx context.Context, jwt, mid string) ([]Plan, error) {
 	cfg := LoadConfig()
-	hc := &http.Client{Timeout: cfg.Timeout}
-	jwt := resolveJWT()
+	hc := newClaimClient(cfg.Timeout, -1)
 	previewURL := cfg.Origin + "/api/v1/zcode-plan/billing/preview?app_version=" +
 		url.QueryEscape(appVersion()) + "&platform=" + url.QueryEscape(runtime.GOOS+"-"+runtime.GOARCH)
 	plans, perr := previewPlans(ctx, hc, previewURL, jwt)
 	if perr != nil && perr.Status != 404 {
 		return nil, perr
 	}
-	plans = append(plans, marketingPlans(ctx, hc, cfg, jwt)...)
+	plans = append(plans, marketingPlansFor(ctx, hc, cfg, jwt, mid)...)
 	sort.SliceStable(plans, func(i, j int) bool { return plans[i].Priority > plans[j].Priority })
 	return plans, nil
 }
@@ -259,11 +279,14 @@ func parsePlan(m map[string]any, source string) (Plan, bool) {
 // marketingPlans scans marketing/touch deliveries for buttons whose action
 // is claim_zcode_plan (depth-limited, defensive parse like the reference).
 func marketingPlans(ctx context.Context, hc *http.Client, cfg Config, jwt string) []Plan {
-	mid := claimDeviceMid()
+	return marketingPlansFor(ctx, hc, cfg, jwt, claimDeviceMid())
+}
+
+func marketingPlansFor(ctx context.Context, hc *http.Client, cfg Config, jwt, mid string) []Plan {
 	if mid == "" {
 		return nil
 	}
-	headers := headerAuth(jwt)
+	headers := headerAuthFor(jwt, mid)
 	headers["X-Client-Language"] = "zh-CN"
 	headers["X-ZCode-App-Version"] = appVersion()
 	env, err := doJSON(ctx, hc, http.MethodGet, cfg.Origin+"/api/v1/marketing/touch?seq=0", headers, nil)
@@ -362,7 +385,7 @@ func VerificationConfigFor(ctx context.Context) (VerificationConfig, error) {
 	if jwt == "" {
 		return VerificationConfig{}, fmt.Errorf("claim requires a plan JWT (run zcode-bridge login)")
 	}
-	hc := &http.Client{Timeout: cfg.Timeout}
+	hc := newClaimClient(cfg.Timeout, -1)
 	h := headerAuth(jwt)
 	h["Accept"] = "application/json"
 	h["X-ZCode-App-Version"] = appVersion()
@@ -421,9 +444,14 @@ func Claim(ctx context.Context, planID string) (Outcome, error) {
 // ClaimWithVerification posts a claim carrying an Aliyun captcha token
 // produced by the dashboard widget. Empty param means a plain attempt.
 func ClaimWithVerification(ctx context.Context, planID, verifyParam, verifyRegion string) (Outcome, error) {
+	return ClaimWithVerificationFor(ctx, resolveJWT(), claimDeviceMid(), planID, verifyParam, verifyRegion)
+}
+
+// ClaimWithVerificationFor claims with an explicit account credential pair,
+// used by the claim-all sweep.
+func ClaimWithVerificationFor(ctx context.Context, jwt, mid, planID, verifyParam, verifyRegion string) (Outcome, error) {
 	cfg := LoadConfig()
-	hc := &http.Client{Timeout: cfg.Timeout}
-	jwt := resolveJWT()
+	hc := newClaimClient(cfg.Timeout, -1)
 	if jwt == "" {
 		return Outcome{PlanID: planID, Message: "login_required"}, fmt.Errorf("claim requires a plan JWT (run zcode-bridge login)")
 	}
@@ -433,7 +461,7 @@ func ClaimWithVerification(ctx context.Context, planID, verifyParam, verifyRegio
 		"X-ZCode-App-Version": appVersion(),
 		"X-Platform":          runtime.GOOS + "-" + runtime.GOARCH,
 	}
-	if mid := claimDeviceMid(); mid != "" {
+	if mid != "" {
 		headers["X-Device-Mid"] = mid
 	}
 	if v := strings.TrimSpace(verifyParam); v != "" {
@@ -443,6 +471,17 @@ func ClaimWithVerification(ctx context.Context, planID, verifyParam, verifyRegio
 		}
 	}
 	env, apiErr := doJSON(ctx, hc, http.MethodPost, cfg.Origin+"/api/v1/zcode-plan/billing/claim", headers, map[string]any{"plan_id": planID})
+	if apiErr != nil && fmt.Sprint(apiErr.Code) == "3007" && strings.TrimSpace(verifyParam) == "" && captcha.Configured() {
+		if p, reg, mErr := captcha.Mint(ctx); mErr != nil {
+			log.Printf("claim: captcha minter failed: %v", mErr)
+		} else {
+			headers["X-Aliyun-Captcha-Verify-Param"] = p
+			if reg != "" {
+				headers["X-Aliyun-Captcha-Verify-Region"] = reg
+			}
+			env, apiErr = doJSON(ctx, hc, http.MethodPost, cfg.Origin+"/api/v1/zcode-plan/billing/claim", headers, map[string]any{"plan_id": planID})
+		}
+	}
 	if apiErr != nil {
 		msg := apiErr.Msg
 		switch fmt.Sprint(apiErr.Code) {

@@ -90,6 +90,10 @@ func route(w http.ResponseWriter, r *http.Request) {
 		if requireObservabilityToken(w, r) {
 			handleClaimList(w, r)
 		}
+	case r.Method == http.MethodPost && pathName == "/v1/claim/all":
+		if requireObservabilityToken(w, r) {
+			handleClaimAll(w, r)
+		}
 	case r.Method == http.MethodPost && pathName == "/v1/claim":
 		if requireObservabilityToken(w, r) {
 			handleClaimNow(w, r)
