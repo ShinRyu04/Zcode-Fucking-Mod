@@ -34,12 +34,13 @@ var assetRaw []byte
 
 // Asset mirrors the captured identity file (sanitized for publication).
 type Asset struct {
-	Source           string `json:"source"`
-	CliPrefix        string `json:"cliPrefix"`
-	StablePrefix     string `json:"stablePrefix"`
-	AnthropicVersion string `json:"anthropicVersion"`
-	AnthropicBeta    string `json:"anthropicBeta"`
-	SDKUserAgent     string `json:"sdkUserAgent"`
+	Source            string `json:"source"`
+	CliPrefix         string `json:"cliPrefix"`
+	StablePrefix      string `json:"stablePrefix"`
+	EnvironmentPrefix string `json:"environmentPrefix"`
+	AnthropicVersion  string `json:"anthropicVersion"`
+	AnthropicBeta     string `json:"anthropicBeta"`
+	SDKUserAgent      string `json:"sdkUserAgent"`
 }
 
 var identity Asset
@@ -48,8 +49,11 @@ func init() {
 	if err := json.Unmarshal(assetRaw, &identity); err != nil {
 		panic("zcode-bridge: embedded identity asset is invalid: " + err.Error())
 	}
-	if len(identity.StablePrefix) < 1500 {
+	if len(identity.StablePrefix) < 1000 {
 		panic("zcode-bridge: captured stable prefix is too short to satisfy the identity gate")
+	}
+	if identity.EnvironmentPrefix == "" {
+		panic("zcode-bridge: captured environment block is missing")
 	}
 }
 
@@ -96,13 +100,21 @@ func NormalizeClientSystem(system any) string {
 	}
 }
 
+const (
+	cannedOpener = "Before your first tool call, say in a sentence what you're about to do; while working, give brief updates when you find something load-bearing or change direction."
+	leadOutcome  = "Lead with the outcome. Your first sentence after finishing should answer \"what happened\" or \"what did you find\" — the thing the user would ask for if they said \"just give me the TLDR.\" Supporting detail and reasoning come after, for readers who want them."
+)
+
 // BuildSystem builds the 3-block system array for one upstream request.
-// clientSystem (string | block array | nil) becomes block 3 verbatim.
+// Blocks 1-2 are the captured identity; block 3 is the captured environment
+// prose with the caller's own system prompt spliced in, which keeps the block
+// count at three (a fourth block is rejected with 3012).
 func BuildSystem(clientSystem any) []Block {
 	dynamic := NormalizeClientSystem(clientSystem)
-	block3 := ""
+	block3 := strings.ReplaceAll(identity.EnvironmentPrefix, cannedOpener, "")
+	block3 = strings.ReplaceAll(block3, leadOutcome, "")
 	if dynamic != "" {
-		block3 = "\n\n" + dynamic
+		block3 += "\n\n# Client instructions\n" + dynamic
 	}
 	return []Block{
 		{Type: "text", Text: identity.CliPrefix},
