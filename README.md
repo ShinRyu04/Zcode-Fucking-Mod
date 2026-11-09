@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="internal/webui/assets/brand.jpg" alt="ZCode" width="170">
+  <img src="internal/webui/assets/brand.png" alt="ZCode" width="200">
 </p>
 
 <h1 align="center">ZCode</h1>
@@ -46,6 +46,16 @@ desktop app is not required). The plan JWT and refresh token land in
 `data/accounts.json` (mode `0600`). Repeat `login --label work` per account;
 `login --list`, `login --set-default <id>` and `login --remove <id>` manage the
 ring.
+
+### Dashboard login
+
+`/dashboard` and `/chat` are behind a password gate. The password is the
+**bridge key**, entered without a username. On this install the key is
+**`khalidganteng`**; change it under **Pengaturan → Integrasi agen** or with
+`POST /v1/integration/key` (`{"key":"..."}`), then update every client that
+sends `Authorization: Bearer <kunci>` or `x-api-key: <kunci>`. When no key is
+configured the loopback console stays open. `ZCODE_BRIDGE_TOKEN` overrides the
+stored key entirely.
 
 <details>
 <summary><b>Features</b></summary>
