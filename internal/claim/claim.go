@@ -21,6 +21,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/azrinaldi/zcode-bridge/internal/accounts"
 	"github.com/azrinaldi/zcode-bridge/internal/auth"
 	"github.com/azrinaldi/zcode-bridge/internal/identity"
 )
@@ -97,7 +98,12 @@ func LoadConfig() Config {
 	}
 }
 
-var resolveJWT = func() string { return auth.ResolvePlanJWT("") }
+var resolveJWT = func() string {
+	if a := accounts.Usable(nil); len(a) > 0 && a[0].JWT != "" {
+		return a[0].JWT // default account first (Usable pins it at the head)
+	}
+	return auth.ResolvePlanJWT("")
+}
 
 // SetJWTResolverForTest swaps credential resolution in tests.
 func SetJWTResolverForTest(fn func() string) func() {

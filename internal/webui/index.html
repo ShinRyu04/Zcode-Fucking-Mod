@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>zcode-bridge</title>
-<link rel="stylesheet" href="/assets/app.css?v=20261107e">
-<script defer src="/assets/app.js?v=20261107e"></script>
-<script defer src="/assets/chat.js?v=20261107e"></script>
+<link rel="stylesheet" href="/assets/app.css?v=20261109f">
+<script defer src="/assets/app.js?v=20261109f"></script>
+<script defer src="/assets/chat.js?v=20261109a"></script>
 </head>
 <body>
 <a class="skip" href="#view">Lewati ke konten</a>
@@ -31,22 +31,30 @@
 </header>
 
 <div class="shell">
+  <button class="scrim" id="scrim" type="button" aria-hidden="true" tabindex="-1"></button>
   <aside class="sidebar" id="sidebar">
     <nav id="nav" aria-label="Navigasi utama">
-      <a href="#/overview" data-page="overview">Ringkasan</a>
-      <a href="#/accounts" data-page="accounts">Akun</a>
-      <a href="#/chat" data-page="chat">Chat</a>
-      <a href="#/sharing" data-page="sharing">Sharing</a>
-      <a href="#/inspector" data-page="inspector">Inspector</a>
-      <a href="#/usage" data-page="usage">Penggunaan</a>
-      <a href="#/network" data-page="network">Jaringan</a>
-      <a href="#/claim" data-page="claim">Klaim plan</a>
-      <a href="#/settings" data-page="settings">Pengaturan</a>
+      <div class="nav-group">
+        <p class="nav-label">Monitor</p>
+        <a href="#/overview" data-page="overview">Ringkasan</a>
+        <a href="#/usage" data-page="usage">Penggunaan</a>
+        <a href="#/network" data-page="network">Jaringan</a>
+        <a href="#/inspector" data-page="inspector">Inspector</a>
+      </div>
+      <div class="nav-group">
+        <p class="nav-label">Alat</p>
+        <a href="#/chat" data-page="chat">Chat</a>
+        <a href="#/sharing" data-page="sharing">Sharing</a>
+        <a href="#/accounts" data-page="accounts">Akun</a>
+        <a href="#/claim" data-page="claim">Klaim plan</a>
+        <a href="#/settings" data-page="settings">Pengaturan</a>
+      </div>
     </nav>
     <div class="side-foot">
       <div class="side-stat"><span>Kecepatan</span><b id="sidetps">-</b></div>
       <div class="side-stat"><span>Hari ini</span><b id="sidereq">-</b></div>
       <div class="side-stat"><span>Jaringan</span><b id="sidenet">-</b></div>
+      <span class="side-ver" id="sidever"></span>
       <a class="side-link" href="/overlay" target="_blank" rel="noopener">Buka overlay</a>
     </div>
   </aside>

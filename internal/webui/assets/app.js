@@ -98,6 +98,22 @@ const EN_TEXT = {
   'Hubungkan akun': 'Connect account',
   'Label akun baru (mis. kerja)': 'New account label (e.g. work)',
   'Belum ada akun tersimpan. Hubungkan akun Z.ai pertama.': 'No stored accounts yet. Connect your first Z.ai account.',
+  'Akun di pool': 'Account pool',
+  'kuota per model': 'per-model quota',
+  'Segarkan': 'Refresh',
+  'Pool akun ring plan: status tiap akun dan sisa kuota per model.': 'Account pool: per-account status and remaining quota by model.',
+  'Belum ada akun': 'No accounts yet',
+  'Hubungkan akun Z.ai pertama lewat form di bawah.': 'Connect your first Z.ai account with the form below.',
+  'Kuota dibaca langsung dari billing tiap akun; cache 45 detik. Kolom model muncul otomatis dari plan yang terdeteksi.': 'Quota is read from each account billing; 45s cache. Model columns come from detected plans.',
+  'Post baru': 'New post',
+  'tersimpan lokal': 'stored locally',
+  'Plan terdeteksi': 'Plans found',
+  'Pemindaian terakhir': 'Last scan',
+  'Riwayat klaim': 'Claim history',
+  'dari pemindaian terakhir': 'from the last scan',
+  'waktu lokal': 'local time',
+  'percobaan tersimpan': 'stored attempts',
+  'Aktifkan': 'Activate',
   'Setujui tautan ini di browser yang sudah login ke Z.ai:': 'Approve this link in a browser already signed in to Z.ai:',
   'Buka halaman izin': 'Open approval page',
   'Salin tautan': 'Copy link',
@@ -168,6 +184,10 @@ const EN_TEXT = {
   'Cek plan weekend/trial yang tersedia lalu klaim.': 'Check available weekend/trial plans, then claim.',
   'Tidak ada plan yang bisa diklaim.': 'No plans available to claim.',
   'Tekan “Cek plan” untuk memindai penawaran.': 'Press “Check plans” to scan offers.',
+  'Belum ada plan aktif': 'No active plans',
+  'Tekan “Cek plan” untuk memindai penawaran weekend/trial.': 'Press “Check plans” to scan weekend/trial offers.',
+  'Tidak ada plan yang bisa diklaim': 'No plans available to claim',
+  'Coba pindai lagi nanti; penawaran biasanya muncul akhir pekan.': 'Scan again later; offers usually appear on weekends.',
   'Riwayat klaim': 'Claim history',
   'Belum ada riwayat.': 'No history yet.',
   'Buka halaman klaim': 'Open claim page',
@@ -478,20 +498,20 @@ function pageOverview(view) {
     <div class="card stat"><span class="k">Request hari ini</span><span class="v" id="ov-req">-</span><span class="s" id="ov-tok">-</span></div>
     <div class="card stat"><span class="k">Jaringan</span><span class="v smallv" id="ov-net">-</span><span class="s" id="ov-net2">-</span></div>
   </div>
-  <div class="grid g2" style="margin-top:14px">
+  <div class="grid g2 mt14">
     <div class="card" id="ov-quota"><h2>Kuota plan <span class="muted" id="ov-qs">memuat…</span></h2><div class="empty">Memuat kuota…</div></div>
     <div class="card" id="ov-accounts"><h2>Akun <span class="muted">ring plan lokal</span></h2><div class="empty">Memuat…</div></div>
   </div>
-  <div class="grid g2" style="margin-top:14px">
+  <div class="grid g2 mt14">
     <div class="card" id="ov-recent"><h2>Request terakhir</h2><div class="empty">Belum ada data.</div></div>
     <div class="card" id="ov-netcard"><h2>Jaringan proses</h2><div class="empty">Menunggu sampel…</div></div>
   </div>
-  <div class="grid g2" style="margin-top:14px">
+  <div class="grid g2 mt14">
     <div class="card" id="ov-claim"><h2>Klaim plan <span class="muted">weekend / trial</span></h2><div class="empty">Memuat…</div></div>
     <div class="card"><h2>Info lane</h2>
       <dl class="kv">
         <dt>Lane</dt><dd id="ov-lane">-</dd>
-        <dt>Upstream</dt><dd id="ov-up" class="mono" style="font-size:11px">-</dd>
+        <dt>Upstream</dt><dd id="ov-up" class="mono smallmono">-</dd>
         <dt>Versi app</dt><dd id="ov-ver">-</dd>
         <dt>Device MID</dt><dd id="ov-mid">-</dd>
         <dt>Auth</dt><dd id="ov-authmode">-</dd>
@@ -571,7 +591,7 @@ function accountBadges(a) {
 
 function renderAccountCard() {
   const accounts = (ZB.health && ZB.health.accounts) || [];
-  const box = $('#acc-page') || $('#ov-accounts');
+  const box = $('#ov-accounts');
   if (!box) return;
   box.innerHTML = '<h2>Akun <span class="muted">ring plan lokal</span></h2>' +
     (accounts.length ? '<div class="acct-list">' + accounts.map(a => `
@@ -582,20 +602,27 @@ function renderAccountCard() {
         <div class="acct-act">${a.default ? '' : `<button class="btn ghost sm" data-acc-use="${esc(a.id)}" type="button">Aktifkan</button>`}<button class="btn ghost sm danger" data-acc-del="${esc(a.id)}" data-acc-label="${esc(a.label || a.id)}" type="button">Hapus</button></div>
       </div>`).join('') + '</div>'
       : '<div class="empty">Belum ada akun tersimpan. Hubungkan akun Z.ai pertama.</div>') +
-    `<form id="acc-add" class="row" style="margin-top:10px"><input id="acc-label" class="grow" maxlength="40" placeholder="Label akun baru (mis. kerja)" autocomplete="off"><button class="btn" id="acc-addbtn" type="submit">Hubungkan akun</button></form>` +
+    `<form id="acc-add" class="row mt10"><input id="acc-label" class="grow" maxlength="40" placeholder="Label akun baru (mis. kerja)" autocomplete="off"><button class="btn" id="acc-addbtn" type="submit">Hubungkan akun</button></form>` +
     '<div id="acc-flow"></div>';
 
-  box.querySelectorAll('[data-acc-use]').forEach(btn => {
+  bindAccountActions(box);
+  bindAccountForm(box);
+  renderAccountFlow();
+}
+
+function bindAccountActions(root) {
+  root.querySelectorAll('[data-acc-use]').forEach(btn => {
     btn.onclick = async () => {
       btn.disabled = true;
       try {
         await api('/v1/accounts/switch', { method: 'POST', body: JSON.stringify({ id: btn.dataset.accUse }) });
         toast('Akun aktif diganti', 'ok');
         await refreshHealth();
+        if (ZB.page === 'accounts') loadPool(true);
       } catch (e) { toast(e.message, 'bad'); btn.disabled = false; }
     };
   });
-  box.querySelectorAll('[data-acc-del]').forEach(btn => {
+  root.querySelectorAll('[data-acc-del]').forEach(btn => {
     btn.onclick = async () => {
       if (!confirm('Hapus akun ' + btn.dataset.accLabel + '? Token plan ikut dihapus dari penyimpanan lokal.')) return;
       btn.disabled = true;
@@ -603,11 +630,16 @@ function renderAccountCard() {
         await api('/v1/accounts/remove', { method: 'POST', body: JSON.stringify({ id: btn.dataset.accDel }) });
         toast('Akun dihapus', 'ok');
         await refreshHealth();
+        if (ZB.page === 'accounts') loadPool(true);
       } catch (e) { toast(e.message, 'bad'); btn.disabled = false; }
     };
   });
-  const form = $('#acc-add');
-  if (form) form.onsubmit = async ev => {
+}
+
+function bindAccountForm(root) {
+  const form = root.querySelector('#acc-add');
+  if (!form) return;
+  form.onsubmit = async ev => {
     ev.preventDefault();
     const label = ($('#acc-label').value || '').trim();
     const addBtn = $('#acc-addbtn');
@@ -624,14 +656,91 @@ function renderAccountCard() {
       addBtn.disabled = false;
     }
   };
-  renderAccountFlow();
+}
+
+/* pool akun: status + sisa kuota per model untuk SEMUA akun */
+function poolErrText(e) {
+  if (/empty plan list/i.test(e)) return 'tidak ada grant di plan akun ini';
+  if (/status 429/i.test(e)) return 'billing sibuk (429), coba Segarkan';
+  if (/status 5\d\d/i.test(e)) return 'billing error, coba Segarkan';
+  if (/^balance:/i.test(e)) return e.replace(/^balance:\s*/i, 'billing: ');
+  return e;
+}
+
+function prettyModel(m) {
+  return String(m).replace(/^glm/i, 'GLM').replace(/-([a-z])/g, (_, c) => '-' + c.toUpperCase());
+}
+
+function poolUnits(n) {
+  n = Number(n) || 0;
+  if (n >= 1e9) return (n / 1e9).toFixed(1) + ' B';
+  if (n >= 1e6) return (n / 1e6).toFixed(1) + ' M';
+  if (n >= 1e3) return (n / 1e3).toFixed(1) + ' K';
+  return String(Math.round(n));
+}
+
+async function loadPool(force) {
+  const box = $('#acc-pool');
+  if (!box) return;
+  if (force) box.setAttribute('aria-busy', 'true');
+  try {
+    ZB.pool = await api('/v1/accounts/pool' + (force ? '?force=1' : ''));
+    renderPool();
+  } catch (e) {
+    box.innerHTML = `<div class="empty">${esc(e.message)}</div>`;
+  }
+}
+
+function renderPool() {
+  const box = $('#acc-pool');
+  const p = ZB.pool;
+  if (!box || !p) return;
+  const accs = p.accounts || [], models = p.models || [];
+  if (!accs.length) {
+    box.innerHTML = `<div class="empty"><b>Belum ada akun</b><span class="empty-hint">Hubungkan akun Z.ai pertama lewat form di bawah.</span></div>`;
+    return;
+  }
+  const cell = (a, model) => {
+    if (a.error) return '<td class="num muted">—</td>';
+    const rows = (a.rows || []).filter(r => r.model === model);
+    if (!rows.length) return '<td class="num muted">—</td>';
+    const rem = rows.reduce((s, r) => s + Number(r.remaining || 0), 0);
+    const tot = rows.reduce((s, r) => s + Number(r.total || 0), 0);
+    const used = rows.reduce((s, r) => s + Number(r.used || 0), 0);
+    const wide = tot > 0 ? pct(used, tot) : 0;
+    return `<td class="num" title="terpakai ${poolUnits(used)} dari ${poolUnits(tot)}">
+      <span class="pool-rem">${poolUnits(rem)}</span><span class="pool-tot">/ ${poolUnits(tot)}</span>
+      <span class="pool-bar"><i style="width:${wide.toFixed(1)}%"></i></span>
+    </td>`;
+  };
+  box.innerHTML = `<div class="tablewrap pool-wrap"><table class="pool">
+    <thead><tr><th>Akun</th><th>Status</th>${models.map(m => `<th class="num model" title="${esc(m)}">${esc(prettyModel(m))}</th>`).join('')}<th class="num">Aksi</th></tr></thead>
+    <tbody>${accs.map(a => `<tr class="${a.default ? 'sel' : ''}">
+      <td><div class="pool-name"><b>${esc(a.label || a.id)}</b><span class="small muted mono">${esc(a.email || a.id)}</span>${a.error ? `<span class="small pool-err" title="${esc(a.error)}">${esc(poolErrText(a.error))}</span>` : ''}</div></td>
+      <td>${accountBadges(a)}</td>
+      ${models.map(m => cell(a, m)).join('')}
+      <td class="num"><div class="pool-act">${a.default ? '' : `<button class="btn ghost sm" data-acc-use="${esc(a.id)}" type="button">Aktifkan</button>`}<button class="btn ghost sm danger" data-acc-del="${esc(a.id)}" data-acc-label="${esc(a.label || a.id)}" type="button">Hapus</button></div></td>
+    </tr>`).join('')}</tbody>
+  </table></div>
+  <p class="small muted pool-note">Kuota dibaca langsung dari billing tiap akun; cache 45 detik. Kolom model muncul otomatis dari plan yang terdeteksi.</p>`;
+  bindAccountActions(box);
 }
 
 function pageAccounts(view) {
-  view.innerHTML = skeleton('Akun', 'Ring plan lokal: koneksi, akun aktif, dan masa berlaku.') +
-    '<div class="card" id="acc-page"><div class="empty">Memuat...</div></div>';
-  renderAccountCard();
-  refreshHealth();
+  view.innerHTML = skeleton('Akun', 'Pool akun ring plan: status tiap akun dan sisa kuota per model.') + `
+  <div class="card">
+    <h2>Akun di pool <span class="muted">kuota per model</span><span class="spacer"></span><button class="btn ghost sm" id="pool-refresh" type="button">Segarkan</button></h2>
+    <div id="acc-pool" aria-live="polite"><div class="empty">Membaca kuota semua akun…</div></div>
+  </div>
+  <div class="card mt14">
+    <h2>Hubungkan akun</h2>
+    <form id="acc-add" class="row"><input id="acc-label" class="grow" maxlength="40" placeholder="Label akun baru (mis. kerja)" autocomplete="off"><button class="btn primary" id="acc-addbtn" type="submit">Hubungkan akun</button></form>
+    <div id="acc-flow"></div>
+  </div>`;
+  $('#pool-refresh').onclick = () => loadPool(true);
+  bindAccountForm(view);
+  renderAccountFlow();
+  loadPool(false);
 }
 
 function renderAccountFlow() {
@@ -640,14 +749,14 @@ function renderAccountFlow() {
   if (!accountFlow) { el.innerHTML = ''; return; }
   if (accountFlow.status === 'pending') {
     el.innerHTML = `<div class="flow"><div class="small muted">Setujui tautan ini di browser yang sudah login ke Z.ai:</div>
-      <div class="row" style="margin-top:6px"><a class="btn sm" href="${esc(accountFlow.url)}" target="_blank" rel="noopener">Buka halaman izin</a><button class="btn ghost sm" id="accflow-copy" type="button">Salin tautan</button><button class="btn ghost sm" id="accflow-cancel" type="button">Batal</button></div>
-      <div class="small muted" id="accflow-stat" style="margin-top:6px">Menunggu persetujuan...</div></div>`;
+      <div class="row mt6"><a class="btn sm" href="${esc(accountFlow.url)}" target="_blank" rel="noopener">Buka halaman izin</a><button class="btn ghost sm" id="accflow-copy" type="button">Salin tautan</button><button class="btn ghost sm" id="accflow-cancel" type="button">Batal</button></div>
+      <div id="accflow-stat" class="mt6">Menunggu persetujuan...</div></div>`;
     const copy = $('#accflow-copy');
     if (copy) copy.onclick = () => copyText(accountFlow.url);
     const cancel = $('#accflow-cancel');
     if (cancel) cancel.onclick = cancelAccountLogin;
   } else {
-    el.innerHTML = `<div class="flow"><div class="small ${accountFlow.status === 'ok' ? 'muted' : 'danger'}">${esc(accountFlow.error || (accountFlow.status === 'ok' ? 'Akun terhubung.' : 'Login dibatalkan.'))}</div><div class="row" style="margin-top:6px"><button class="btn ghost sm" id="accflow-close" type="button">Tutup</button></div></div>`;
+    el.innerHTML = `<div class="flow"><div class="small ${accountFlow.status === 'ok' ? 'muted' : 'danger'}">${esc(accountFlow.error || (accountFlow.status === 'ok' ? 'Akun terhubung.' : 'Login dibatalkan.'))}</div><div class="row mt6"><button class="btn ghost sm" id="accflow-close" type="button">Tutup</button></div></div>`;
     const close = $('#accflow-close');
     if (close) close.onclick = () => { accountFlow = null; renderAccountFlow(); };
   }
@@ -695,9 +804,9 @@ async function loadOverviewExtras() {
     }
     box.innerHTML = `<h2>Kuota plan <span class="muted">akun ${esc(q.account || '-')} · ${esc(q.source || '')}</span></h2>` + rows.slice(0, 3).map(r => {
       const total = Number(r.total_units) || 0, used = Number(r.used_units) || 0, rem = Number(r.remaining_units) || (total - used);
-      return `<div style="margin:12px 0">
+      return `<div class="gapq">
         <div class="row"><b>${esc(r.model || r.plan_name || 'plan')}</b><span class="badge">${esc(r.plan_name || r.plan || '')}</span><span class="spacer"></span><span class="muted small">sisa ${fmtN(rem)}</span></div>
-        <div class="bar" style="margin:8px 0"><i style="width:${pct(used, total)}%"></i></div>
+        <div class="bar gapbar"><i style="width:${pct(used, total)}%"></i></div>
         <div class="row small muted"><span>${fmtN(used)} / ${fmtN(total)} unit</span><span class="spacer"></span><span>${r.ends_at ? ('berakhir ' + when(r.ends_at)) : ''}</span></div>
       </div>`;
     }).join('');
@@ -714,7 +823,7 @@ async function loadOverviewExtras() {
       (plans.length ? `<div class="tablewrap"><table><thead><tr><th>Plan</th><th>Status</th><th>Mulai</th><th>Selesai</th></tr></thead><tbody>` +
         plans.slice(0, 4).map(p => `<tr><td>${esc(p.name || p.plan || p.id || 'plan')}</td><td>${esc(p.status || '-')}</td><td>${when(p.starts_at || p.start)}</td><td>${when(p.ends_at || p.end)}</td></tr>`).join('') + '</tbody></table></div>'
         : `<div class="empty">${esc(c.message || 'Tidak ada plan yang bisa diklaim.')}</div>`) +
-      `<div class="row" style="margin-top:10px"><a class="btn ghost sm" href="#/claim">Buka halaman klaim</a></div>`;
+      `<div class="row mt10"><a class="btn ghost sm" href="#/claim">Buka halaman klaim</a></div>`;
   }).catch(() => { const el = $('#ov-claim'); if (el) el.innerHTML = '<h2>Klaim plan</h2><div class="empty">Butuh plan JWT / device MID.</div>'; });
 }
 
@@ -722,7 +831,7 @@ async function loadOverviewExtras() {
 function pageUsage(view) {
   view.innerHTML = skeleton('Penggunaan', 'Token, kecepatan, dan tren per model.') + `
   <div class="toolbar">
-    <div class="tabs" id="urange" style="border:0;margin:0">
+    <div class="tabs" id="urange">
       ${['1h', '6h', '24h', '7d'].map(r => `<button type="button" data-r="${r}" class="${ZB.range === r ? 'active' : ''}">${r === '7d' ? '7 hari' : r}</button>`).join('')}
     </div>
     <span class="spacer"></span>
@@ -733,15 +842,15 @@ function pageUsage(view) {
     <div class="ring"><div class="k">Tertinggi</div><div class="v" id="ur-high">-</div></div>
     <div class="ring"><div class="k">Rata-rata 7 hari</div><div class="v" id="ur-avg">-</div></div>
   </div>
-  <div class="grid g2" style="margin-top:14px">
+  <div class="grid g2 mt14">
     <div class="card"><h2>Hari ini</h2><div class="grid g2" id="u-today"></div></div>
     <div class="card"><h2>Sepanjang waktu</h2><div class="grid g2" id="u-all"></div></div>
   </div>
-  <div class="card" style="margin-top:14px"><h2>Kecepatan <span class="muted" id="u-range-label"></span></h2>
+  <div class="card mt14"><h2>Kecepatan <span class="muted" id="u-range-label"></span></h2>
     <div class="chartbox"><svg class="chart" id="uchart" preserveAspectRatio="none"></svg></div>
-    <div class="legend"><span><i style="background:var(--accent)"></i>t/s</span><span><i style="background:var(--muted)"></i>token keluar</span></div>
+    <div class="legend"><span><i class="tps"></i>t/s</span><span><i class="out"></i>token keluar</span></div>
   </div>
-  <div class="grid g2" style="margin-top:14px">
+  <div class="grid g2 mt14">
     <div class="card"><h2>Per model <span class="muted">hari ini</span></h2><div id="umodels"></div></div>
     <div class="card"><h2>Aplikasi ZCode <span class="muted" id="udnote"></span></h2><div id="udesktop"></div></div>
   </div>`;
@@ -830,7 +939,7 @@ function renderDesktop(d) {
     <div class="stat"><span class="k">Puncak 7h</span><span class="v">${fmtTps(s.high_7d)} t/s</span></div>
     <div class="stat"><span class="k">Sesi</span><span class="v">${fmtN(s.sessions)}</span></div>
     <div class="stat"><span class="k">Aktivitas</span><span class="v smallv">${when(s.last_activity ? s.last_activity * 1000 : 0)}</span></div>
-  </div><p class="small muted" style="margin:10px 0 0">${esc(d.path || '')}</p>`;
+  </div><p class="small muted u-path">${esc(d.path || '')}</p>`;
 }
 
 /* ---------------- inspector ---------------- */
@@ -846,7 +955,7 @@ function pageInspector(view) {
     <a class="btn ghost sm" id="ihar" href="/inspect?format=har" target="_blank" rel="noopener">Ekspor HAR</a>
   </div>
   <div class="split">
-    <div class="card flat" style="padding:0"><div class="tablewrap" style="max-height:64vh"><table id="itable"><thead><tr><th>Waktu</th><th>Metode</th><th>Rute</th><th>Model</th><th class="num">Status</th><th class="num">Durasi</th></tr></thead><tbody><tr><td colspan="6" class="empty">Memuat…</td></tr></tbody></table></div></div>
+    <div class="card flat flat-card"><div class="tablewrap table-tall"><table id="itable"><thead><tr><th>Waktu</th><th>Metode</th><th>Rute</th><th>Model</th><th class="num">Status</th><th class="num">Durasi</th></tr></thead><tbody><tr><td colspan="6" class="empty">Memuat…</td></tr></tbody></table></div></div>
     <div class="card" id="idetail"><div class="empty">Pilih satu baris untuk melihat detail.</div></div>
   </div>`;
   $('#iq').oninput = e => { insState.q = e.target.value; renderInspectRows(); };
@@ -913,7 +1022,7 @@ async function loadInspectDetail(id) {
         <dt>Ukuran</dt><dd>${fmtBytes(ex.request_bytes)} → ${fmtBytes(ex.response_bytes)}${ex.truncated ? ' (dipotong)' : ''}</dd>
         <dt>Stream</dt><dd>${ex.stream ? 'ya' : 'tidak'}</dd>
       </dl>
-      <h3 style="margin-top:12px">Request</h3><pre class="body">${esc(ex.request_body || '')}</pre>
+      <h3 class="detail-h">Request</h3><pre class="body">${esc(ex.request_body || '')}</pre>
       <h3>Response</h3><pre class="body">${esc(ex.response_body || '')}</pre>`;
     $('#ireplay').onclick = async () => {
       try { await api('/inspect/replay', { method: 'POST', body: JSON.stringify({ id: ex.id }) }); toast('Replay terkirim', 'ok'); }
@@ -930,7 +1039,7 @@ async function loadInspectDetail(id) {
 function pageNetwork(view) {
   view.innerHTML = skeleton('Jaringan', 'Lalu lintas adapter, koneksi TCP, dan proses ZCode.') + `
   <div class="grid g4" id="ntiles"></div>
-  <div class="grid g2" style="margin-top:14px">
+  <div class="grid g2 mt14">
     <div class="card"><h2>Adapter</h2><div id="nifs"></div></div>
     <div class="card"><h2>Proses ZCode</h2><div id="nproc"></div></div>
   </div>`;
@@ -955,7 +1064,7 @@ function renderNetwork() {
       <div class="stat"><span class="k">Tulis</span><span class="v">${fmtBps(p.write_bps)}</span><span class="s">${fmtBytes(p.write_bytes)}</span></div>
       <div class="stat"><span class="k">CPU</span><span class="v">${(p.cpu_percent || 0).toFixed(1)}%</span></div>
       <div class="stat"><span class="k">PID</span><span class="v smallv">${(p.pids || []).join(', ') || '-'}</span><span class="s">${esc(p.name || '')}</span></div>
-    </div><p class="small muted" style="margin-top:10px">Kalibrasi ${(p.calibration || 1).toFixed(2)}×</p>`
+    </div><p class="small muted u-calib">Kalibrasi ${(p.calibration || 1).toFixed(2)}×</p>`
     : '<div class="empty">Proses ZCode tidak ditemukan.</div>';
 }
 
@@ -963,8 +1072,13 @@ function renderNetwork() {
 function pageClaim(view) {
   view.innerHTML = skeleton('Klaim plan', 'Cek plan weekend/trial yang tersedia lalu klaim.') + `
   <div class="toolbar"><button class="btn" id="cscan" type="button">Cek plan</button><button class="btn primary" id="cnow" type="button">Klaim sekarang</button><span class="small muted" id="cstat"></span></div>
-  <div class="card" id="cbody"><div class="empty">Tekan “Cek plan” untuk memindai penawaran.</div></div>
-  <div class="card" style="margin-top:14px"><h2>Riwayat klaim</h2><div id="chist"><div class="empty">Memuat…</div></div></div>`;
+  <div class="grid g3">
+    <div class="card stat"><span class="k">Plan terdeteksi</span><span class="v smallv" id="csum-plans">—</span><span class="s">dari pemindaian terakhir</span></div>
+    <div class="card stat"><span class="k">Pemindaian terakhir</span><span class="v smallv" id="csum-scan">—</span><span class="s">waktu lokal</span></div>
+    <div class="card stat"><span class="k">Riwayat klaim</span><span class="v smallv" id="csum-hist">—</span><span class="s">percobaan tersimpan</span></div>
+  </div>
+  <div class="card mt14" id="cbody"><div class="empty"><b>Belum ada plan aktif</b><span class="empty-hint">Tekan “Cek plan” untuk memindai penawaran weekend/trial.</span></div></div>
+  <div class="card mt14"><h2>Riwayat klaim</h2><div id="chist"><div class="empty">Memuat…</div></div></div>`;
   $('#cscan').onclick = () => scanClaim();
   $('#cnow').onclick = async () => {
     try { const r = await api('/v1/claim', { method: 'POST', body: '{}' }); toast(r.message || 'Permintaan klaim dikirim', 'ok'); scanClaim(); }
@@ -981,11 +1095,15 @@ async function scanClaim() {
     const c = await api('/v1/claim');
     const plans = c.plans || c.candidates || [];
     if (st) st.textContent = c.message || '';
-    body.innerHTML = plans.length ? `<div class="tablewrap"><table><thead><tr><th>Plan</th><th>Status</th><th>Mulai</th><th>Selesai</th><th>Unit</th></tr></thead><tbody>${plans.map(p => `<tr><td>${esc(p.name || p.plan_name || p.plan || p.id || '-')}</td><td>${esc(p.status || '-')}</td><td>${when(p.starts_at || p.start)}</td><td>${when(p.ends_at || p.end)}</td><td>${esc(p.units || p.total_units || '-')}</td></tr>`).join('')}</tbody></table></div>` : `<div class="empty">${esc(c.message || 'Tidak ada plan yang bisa diklaim.')}</div>`;
+    const cnt = $('#csum-plans'), scan = $('#csum-scan');
+    if (cnt) cnt.textContent = plans.length;
+    if (scan) scan.textContent = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    body.innerHTML = plans.length ? `<div class="tablewrap"><table><thead><tr><th>Plan</th><th>Status</th><th>Mulai</th><th>Selesai</th><th>Unit</th></tr></thead><tbody>${plans.map(p => `<tr><td>${esc(p.name || p.plan_name || p.plan || p.id || '-')}</td><td>${esc(p.status || '-')}</td><td>${when(p.starts_at || p.start)}</td><td>${when(p.ends_at || p.end)}</td><td>${esc(p.units || p.total_units || '-')}</td></tr>`).join('')}</tbody></table></div>` : `<div class="empty"><b>Tidak ada plan yang bisa diklaim</b><span class="empty-hint">${esc(c.message || 'Coba pindai lagi nanti; penawaran biasanya muncul akhir pekan.')}</span></div>`;
   } catch (e) { body.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
   try {
     const h = await api('/v1/claim/history');
     const list = h.claims || h.entries || [];
+    const hc = $('#csum-hist'); if (hc) hc.textContent = list.length;
     const box = $('#chist');
     if (box) box.innerHTML = list.length ? `<div class="tablewrap"><table><thead><tr><th>Waktu</th><th>Plan</th><th>Status</th></tr></thead><tbody>${list.map(x => `<tr><td>${when(x.at || x.created_at)}</td><td>${esc(x.plan || x.plan_id || '-')}</td><td>${esc(x.status || x.result || '-')}${x.message ? ' · ' + esc(x.message) : ''}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">Belum ada riwayat.</div>';
   } catch (e) {
@@ -1074,7 +1192,7 @@ function renderShareFeed() {
     : shareState.posts;
   box.innerHTML = list.length
     ? list.map(sharePostHTML).join('')
-    : `<div class="empty share-empty"><b>${esc(tr('Belum ada post'))}</b><span>${esc(tr('Mulai dari form di atas.'))}</span></div>`;
+    : `<div class="empty share-empty"><b>${esc(tr('Belum ada post'))}</b><span class="empty-hint">${esc(tr('Mulai dari form di atas.'))}</span></div>`;
 }
 
 async function loadSharing() {
@@ -1104,10 +1222,8 @@ function pageSharing(view) {
   const name = shareName();
   view.innerHTML = skeleton('Sharing', 'Papan sharing lokal: post, link, gambar, dan komentar tersimpan di bridge ini.') + `
   <form class="card share-composer" id="share-form">
-    <div class="share-compose-head">
-      <input id="share-title" maxlength="120" placeholder="Judul" aria-label="Judul" autocomplete="off">
-      <button class="btn primary" id="share-submit" type="submit">Post</button>
-    </div>
+    <h2>Post baru <span class="muted">tersimpan lokal</span></h2>
+    <input id="share-title" maxlength="120" placeholder="Judul post" aria-label="Judul" autocomplete="off">
     <textarea id="share-body" rows="3" maxlength="4000" placeholder="Tulis pesan..." aria-label="Tulis pesan..."></textarea>
     <div id="share-preview" class="share-preview hidden"><img id="share-preview-img" alt="Pratinjau gambar"><button class="btn ghost sm" id="share-drop" type="button">Hapus gambar</button></div>
     <div class="share-tools">
@@ -1118,6 +1234,8 @@ function pageSharing(view) {
       </label>
       <input id="share-link" class="grow" maxlength="600" placeholder="Link (opsional)" aria-label="Link (opsional)" autocomplete="off">
       <label class="share-name-wrap"><span class="small muted">Nama</span><input id="share-name" maxlength="40" value="${esc(name === 'anon' ? '' : name)}" placeholder="Nama" aria-label="Nama tampilan" autocomplete="off"></label>
+      <span class="spacer"></span>
+      <button class="btn primary" id="share-submit" type="submit">Post</button>
     </div>
     <p class="small muted share-warn">Jangan posting token privat. Siapa pun yang membuka bridge ini bisa membaca papan.</p>
   </form>
@@ -1238,23 +1356,25 @@ function pageSharing(view) {
 /* ---------------- settings ---------------- */
 async function pageSettings(view) {
   view.innerHTML = skeleton('Pengaturan', 'Nilai efektif proses ini. Perubahan env butuh restart.') + `
-  <div class="grid g2">
+  <div class="grid g2 set-grid">
     <div class="card"><h2>Bridge</h2><div id="setbridge"><div class="empty">Memuat…</div></div></div>
-    <div class="card"><h2>Token & tema</h2>
-      <label class="field"><span>Bearer token (sesi tab)</span><input id="settoken" type="password" placeholder="belum di-set" autocomplete="off"></label>
-      <div class="row" style="margin-top:10px"><button class="btn" id="settokensave" type="button">Simpan token</button><button class="btn ghost" id="settokenclear" type="button">Hapus</button></div>
-      <hr style="border:0;border-top:1px solid var(--line);margin:14px 0">
-      <div class="row"><span class="small muted">Tema</span><span class="spacer"></span><button class="btn ghost sm" id="settheme" type="button">Ganti tema</button></div>
+    <div class="set-side">
+      <div class="card"><h2>Token & tema</h2>
+        <label class="field"><span>Bearer token (sesi tab)</span><input id="settoken" type="password" placeholder="belum di-set" autocomplete="off"></label>
+        <div class="row mt10"><button class="btn" id="settokensave" type="button">Simpan token</button><button class="btn ghost" id="settokenclear" type="button">Hapus</button></div>
+        <hr class="hr-line">
+        <div class="row"><span class="small muted">Tema</span><span class="spacer"></span><button class="btn ghost sm" id="settheme" type="button">Ganti tema</button></div>
+      </div>
+      <div class="card"><h2>Data & alat</h2>
+        <div class="row"><a class="btn ghost sm" href="/classic" target="_blank" rel="noopener">Dashboard klasik</a><a class="btn ghost sm" href="/overlay" target="_blank" rel="noopener">Overlay</a><a class="btn ghost sm" href="/health" target="_blank" rel="noopener">/health</a><a class="btn ghost sm" href="/v1/models" target="_blank" rel="noopener">/v1/models</a></div>
+        <p class="small muted mt10">Capture dan flag lain dibaca saat start; ubah env lalu restart bridge.</p>
+      </div>
     </div>
   </div>
-  <div class="card" style="margin-top:14px"><h2>Integrasi agen <span class="muted">OpenAI compatible</span></h2>
+  <div class="card mt14"><h2>Integrasi agen <span class="muted">OpenAI compatible</span></h2>
     <div id="intbody"><div class="empty">Memuat...</div></div>
   </div>
-  <div class="card" style="margin-top:14px"><h2>Environment</h2><div id="setenv"></div></div>
-  <div class="card" style="margin-top:14px"><h2>Data & alat</h2>
-    <div class="row"><a class="btn ghost sm" href="/classic" target="_blank" rel="noopener">Dashboard klasik</a><a class="btn ghost sm" href="/overlay" target="_blank" rel="noopener">Overlay</a><a class="btn ghost sm" href="/health" target="_blank" rel="noopener">/health</a><a class="btn ghost sm" href="/v1/models" target="_blank" rel="noopener">/v1/models</a></div>
-    <p class="small muted" style="margin-top:10px">Capture dan flag lain dibaca saat start; ubah env lalu restart bridge.</p>
-  </div>`;
+  <div class="card mt14"><h2>Environment</h2><div id="setenv"></div></div>`;
   $('#settheme').onclick = toggleTheme;
   $('#settokensave').onclick = () => { ZB.token = $('#settoken').value.trim(); sessionStorage.setItem('zbToken', ZB.token); toast('Token disimpan', 'ok'); connectSSE(); refreshHealth(); };
   $('#settokenclear').onclick = () => { ZB.token = ''; sessionStorage.removeItem('zbToken'); $('#settoken').value = ''; toast('Token dihapus', 'ok'); connectSSE(); };
@@ -1294,17 +1414,17 @@ async function loadIntegration() {
       <label class="field"><span>Kunci API (Bearer hilir)</span>
         <div class="row"><input id="intkey" class="grow mono" readonly value="${esc(s.key || '')}" placeholder="belum di-set"><button class="btn ghost sm" id="intcopy" type="button">Salin</button></div>
       </label>
-      <p class="small muted" style="margin:8px 0">${esc(s.masked_key ? 'Tampilan: ' + s.masked_key + ' - ' : '')}${esc(source)}</p>
+      <p class="small muted int-note">${esc(s.masked_key ? 'Tampilan: ' + s.masked_key + ' - ' : '')}${esc(source)}</p>
       <label class="field"><span>Base URL</span>
         <div class="row"><input id="intbase" class="grow mono" readonly value="${esc(s.base_url)}"><button class="btn ghost sm" id="intcopybase" type="button">Salin</button></div>
       </label>
-      <div class="row" style="margin-top:10px"><span class="small muted">Model default ${esc(s.default_model)}</span><span class="spacer"></span>
+      <div class="row mt10"><span class="small muted">Model default ${esc(s.default_model)}</span><span class="spacer"></span>
         <button class="btn ghost sm" id="introtate" type="button">${s.key_present ? 'Ganti kunci' : 'Buat kunci'}</button>
         <button class="btn ghost sm danger" id="intdelete" type="button" ${s.key_present && s.editable ? '' : 'disabled'}>Hapus</button>
       </div>
-      <div class="row" style="margin:14px 0 6px"><span class="small muted">Contoh permintaan</span><span class="spacer"></span><button class="btn ghost sm" id="intcurlcopy" type="button">Salin contoh</button></div>
+      <div class="row int-head"><span class="small muted">Contoh permintaan</span><span class="spacer"></span><button class="btn ghost sm" id="intcurlcopy" type="button">Salin contoh</button></div>
       <pre class="snippet" id="intcurl">${esc(curl)}</pre>
-      <p class="small muted" style="margin-top:8px">Klien lain memakai kunci ini sebagai <span class="mono">Authorization: Bearer</span>. Kunci env tidak bisa diubah dari dashboard.</p>`;
+      <p class="small muted int-tail">Klien lain memakai kunci ini sebagai <span class="mono">Authorization: Bearer</span>. Kunci env tidak bisa diubah dari dashboard.</p>`;
     $('#intcopy').onclick = () => copyText(s.key || '');
     $('#intcopybase').onclick = () => copyText(s.base_url);
     $('#intcurlcopy').onclick = () => copyText(curl);
@@ -1345,6 +1465,7 @@ async function refreshHealth() {
   const dot = $('#livedot'); if (dot) dot.classList.add('live');
   const lane = $('#toplane'); if (lane) lane.textContent = h.lane || 'lane';
   const sub = $('#brandsub'); if (sub) sub.textContent = h.auth || '';
+  const ver = $('#sidever'); if (ver && h.version) ver.textContent = 'v' + h.version;
   if (ZB.page === 'overview' || ZB.page === 'accounts') { patchOverview(); renderAccountCard(); }
 }
 
@@ -1406,6 +1527,11 @@ function boot() {
   $('#themebtn').onclick = toggleTheme;
   $('#tokenbtn').onclick = openToken;
   $('#navtoggle').onclick = () => document.body.classList.toggle('navopen');
+  const scrim = document.getElementById('scrim');
+  if (scrim) scrim.onclick = () => document.body.classList.remove('navopen');
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') document.body.classList.remove('navopen');
+  });
   $('#tokenform').addEventListener('submit', e => {
     e.preventDefault();
     ZB.token = $('#tokeninput').value.trim();

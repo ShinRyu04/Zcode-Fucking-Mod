@@ -45,7 +45,10 @@ Key features:
   sharing, inspector, usage, network, claim and settings, fed live by `GET /v1/events` (SSE over
   `fetch`, so the bridge token travels in a header). The overview has a full
   **account manager** (start a device-flow login from the browser, switch the
-  active account, remove one, see expiry/reauth state). Settings has an
+  active account, remove one, see expiry/reauth state); the Akun page renders a
+  **pool table** with one row per stored account, status badges, and the
+  remaining/total quota for every detected plan model
+  (`GET /v1/accounts/pool`, 45 s cache). Settings has an
   **agent integration** card: downstream bearer key, base URL, default model
   and a copyable curl example. The legacy page stays at `/classic`.
   A topbar **EN/ID** toggle switches the console to English; Indonesian stays
@@ -185,6 +188,7 @@ dashboard key entirely.
 | `POST /async/v1/chat/completions` | OpenAI | same ticket flow, OpenAI stream translation |
 | `GET /async/v1/health` | — | queue availability probe (`can_take_number`, `next_take_at`) |
 | `GET /v1/accounts` | — | non-secret account ring for the dashboard switcher |
+| `GET /v1/accounts/pool` | — | per-account status plus per-model plan grants (`rows`), model column list; `?force=1` bypasses the 45 s cache |
 | `POST /v1/accounts/switch` | — | body `{"id":"<account>"}` pins the rotation head (plan switch) |
 | `POST /v1/accounts/remove` | — | body `{"id":"<account>"}` forgets one stored account |
 | `POST /v1/accounts/login` | — | body `{"label":"…"}` starts a device flow; returns `flow_id`, `authorize_url`, `expires_at` |
