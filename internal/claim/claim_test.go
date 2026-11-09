@@ -3,6 +3,7 @@ package claim
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -71,6 +72,27 @@ func TestListAndClaimBest(t *testing.T) {
 	}
 	if len(claimed) != 1 || claimed[0] != "p-high" {
 		t.Fatalf("claimed = %v", claimed)
+	}
+}
+
+func TestClaimCaptchaBlocked(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]any{"code": 3007, "message": "captcha verify failed"})
+	}))
+	defer srv.Close()
+	t.Setenv("ZCODE_CLAIM_ORIGIN", srv.URL)
+	t.Setenv("ZCODE_IDENTITY_DEVICE_MID", "11111111-2222-3333-4444-555555555555")
+	restore := SetJWTResolverForTest(func() string { return "jwt" })
+	defer restore()
+
+	out, err := Claim(context.Background(), "p1")
+	if err != ErrCaptchaRequired {
+		t.Fatalf("err = %v, want ErrCaptchaRequired", err)
+	}
+	if fmt.Sprint(out.Code) != "3007" || out.OK {
+		t.Fatalf("outcome = %+v", out)
 	}
 }
 

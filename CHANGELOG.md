@@ -16,7 +16,7 @@ versions follow [SemVer](https://semver.org/).
 ### Changed
 - `.gitignore` now blocks `logs/`, `data/`, JWT files and `*.bak-*` backups.
 
-## [Unreleased]
+## [0.1.4-mod] - 2026-11-09
 
 ### Removed
 - The native companion pet window and the `/overlay/pet` presentation mode,
@@ -27,8 +27,18 @@ versions follow [SemVer](https://semver.org/).
 - Claim discovery derives `X-Device-Mid` from the active account when no
   environment override is set, so marketing/banner campaigns remain visible
   after a direct binary launch.
+- Identity client version default raised to 3.17.2: the gateway only serves
+  its current marketing/banner campaigns to that app version, so 3.16.3 saw
+  no claimable plans.
+- Billing claim sends the active account's device mid and reports the
+  gateway's Aliyun captcha (`3007`) as an explicit "claim in the app" state
+  (`perlu-app` in history) instead of retrying; the scheduler backs off six
+  hours because the bridge cannot solve that captcha.
 
 ### Added
+- `GET /v1/accounts/pool` (45 s cache, `?force=1`): per-account status plus
+  per-model plan grants; the dashboard accounts page renders it as a pool
+  table with activate/remove actions.
 - Local sharing board at `/dashboard#/sharing`: title, message, link, image
   attachment up to 120 KB, author name, one like toggle per browser, comments,
   and newest/top sorting. Persisted in `data/sharing.json` (0600) and backed by

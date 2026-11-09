@@ -26,10 +26,14 @@ var claimHistory = struct {
 
 func recordClaim(out claim.Outcome, err error) {
 	rec := claimRecord{At: time.Now().UTC(), Plan: out.PlanID, Status: "ok", Outcome: out}
-	if err != nil {
+	switch {
+	case err == claim.ErrCaptchaRequired:
+		rec.Status = "perlu-app"
+		rec.Message = out.Message + " — klaim lewat app ZCode (captcha Aliyun), lalu Segarkan"
+	case err != nil:
 		rec.Status = "gagal"
 		rec.Message = err.Error()
-	} else if !out.OK {
+	case !out.OK:
 		rec.Status = "ditolak"
 		rec.Message = out.Message
 	}

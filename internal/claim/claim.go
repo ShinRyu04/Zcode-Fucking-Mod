@@ -359,7 +359,7 @@ func Claim(ctx context.Context, planID string) (Outcome, error) {
 		"X-ZCode-App-Version": appVersion(),
 		"X-Platform":          runtime.GOOS + "-" + runtime.GOARCH,
 	}
-	if mid := identity.ResolveDeviceMid(); mid != "" {
+	if mid := claimDeviceMid(); mid != "" {
 		headers["X-Device-Mid"] = mid
 	}
 	env, apiErr := doJSON(ctx, hc, http.MethodPost, cfg.Origin+"/api/v1/zcode-plan/billing/claim", headers, map[string]any{"plan_id": planID})
@@ -368,6 +368,8 @@ func Claim(ctx context.Context, planID string) (Outcome, error) {
 		switch fmt.Sprint(apiErr.Code) {
 		case "4001", "4002", "4003":
 			msg += " (captcha/reCAPTCHA campaign: claim from the ZCode desktop app)"
+		case "3007":
+			return Outcome{PlanID: planID, Code: apiErr.Code, Message: "captcha verify failed"}, ErrCaptchaRequired
 		}
 		return Outcome{PlanID: planID, Code: apiErr.Code, Message: msg}, apiErr
 	}
@@ -408,6 +410,11 @@ func ClaimBest(ctx context.Context) (Outcome, error) {
 // ErrNothingToClaim means no campaign is live for this account.
 var ErrNothingToClaim = fmt.Errorf("no claimable plan right now")
 
+// ErrCaptchaRequired marks a claim blocked by the gateway's Aliyun captcha.
+// The app solves it inside its own webview; retrying from the bridge cannot
+// succeed, so the scheduler backs off instead of looping.
+var ErrCaptchaRequired = fmt.Errorf("klaim butuh app ZCode (captcha Aliyun)")
+
 // Start launches the background scheduler when enabled+auto and a JWT is
 // present. It is a no-op otherwise and never blocks.
 func Start(ctx context.Context) {
@@ -433,6 +440,9 @@ func Start(ctx context.Context) {
 				nextAllowed = time.Now().Add(cfg.PollInterval)
 			case err == ErrNothingToClaim:
 				nextAllowed = time.Now().Add(cfg.PollInterval)
+			case err == ErrCaptchaRequired:
+				log.Printf("claim: %s (plan %s stays claimable in the ZCode app)", err, out.PlanID)
+				nextAllowed = time.Now().Add(6 * time.Hour)
 			default:
 				if err != nil {
 					log.Printf("claim: %v", err)
