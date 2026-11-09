@@ -174,12 +174,21 @@ func doJSON(ctx context.Context, hc *http.Client, method, rawurl string, headers
 	return parsed, nil
 }
 
+// claimDeviceMid prefers the explicit env override, then the active
+// account's device id. Marketing deliveries are bound to that mid.
+func claimDeviceMid() string {
+	if mid := identity.ResolveDeviceMid(); mid != "" {
+		return mid
+	}
+	return accounts.ActiveDeviceID()
+}
+
 func headerAuth(jwt string) map[string]string {
 	h := map[string]string{}
 	if jwt != "" {
 		h["Authorization"] = "Bearer " + jwt
 	}
-	if mid := identity.ResolveDeviceMid(); mid != "" {
+	if mid := claimDeviceMid(); mid != "" {
 		h["X-Device-Mid"] = mid
 	}
 	return h
@@ -250,7 +259,7 @@ func parsePlan(m map[string]any, source string) (Plan, bool) {
 // marketingPlans scans marketing/touch deliveries for buttons whose action
 // is claim_zcode_plan (depth-limited, defensive parse like the reference).
 func marketingPlans(ctx context.Context, hc *http.Client, cfg Config, jwt string) []Plan {
-	mid := identity.ResolveDeviceMid()
+	mid := claimDeviceMid()
 	if mid == "" {
 		return nil
 	}

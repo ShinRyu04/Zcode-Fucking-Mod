@@ -82,7 +82,7 @@ func resolvePlatform() string {
 // ResolveAppVersion mirrors the desktop client version the asset was
 // captured against. Bump only together with the identity asset.
 func ResolveAppVersion() string {
-	return envOr("ZCODE_IDENTITY_APP_VERSION", "3.16.3")
+	return envOr("ZCODE_IDENTITY_APP_VERSION", "3.17.2")
 }
 
 // ResolveDeviceMid picks the billing device UUID: ZCODE_IDENTITY_DEVICE_MID

@@ -244,6 +244,26 @@ func List() []Account {
 	return readStore().Accounts
 }
 
+// ActiveDeviceID returns the default account's device id, falling back to
+// the first account that has one. Marketing/claim faces need the mid of the
+// account whose plan they inspect.
+func ActiveDeviceID() string {
+	mu.Lock()
+	defer mu.Unlock()
+	rec := readStore()
+	for _, a := range rec.Accounts {
+		if a.ID == rec.Default && a.DeviceID != "" {
+			return a.DeviceID
+		}
+	}
+	for _, a := range rec.Accounts {
+		if a.DeviceID != "" {
+			return a.DeviceID
+		}
+	}
+	return ""
+}
+
 func cooledDown(id string, now time.Time) bool {
 	st := runtime[id]
 	return st != nil && st.cooldownUntil.After(now)
