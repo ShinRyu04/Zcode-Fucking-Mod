@@ -1181,6 +1181,7 @@ async function scanClaim() {
     if (cnt) cnt.textContent = plans.length;
     if (scan) scan.textContent = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     body.innerHTML = plans.length ? `<div class="tablewrap"><table><thead><tr><th>Plan</th><th>Status</th><th>Mulai</th><th>Selesai</th><th>Unit</th></tr></thead><tbody>${plans.map(p => `<tr><td>${esc(p.name || p.plan_name || p.plan || p.id || '-')}</td><td>${esc(p.status || '-')}</td><td>${when(p.starts_at || p.start)}</td><td>${when(p.ends_at || p.end)}</td><td>${esc(p.units || p.total_units || '-')}</td></tr>`).join('')}</tbody></table></div>` : `<div class="empty"><b>Tidak ada plan yang bisa diklaim</b><span class="empty-hint">${esc(c.message || 'Coba pindai lagi nanti; penawaran biasanya muncul akhir pekan.')}</span></div>`;
+    if (!plans.length) renderClaimPoolHint(body, c.message);
   } catch (e) { body.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
   try {
     const h = await api('/v1/claim/history');
@@ -1191,6 +1192,27 @@ async function scanClaim() {
   } catch (e) {
     const box = $('#chist'); if (box) box.innerHTML = `<div class="empty">${esc(e.message)}</div>`;
   }
+}
+
+async function renderClaimPoolHint(body, msg) {
+  try {
+    const p = await api('/v1/accounts/pool');
+    const others = (p.accounts || []).filter(a => !a.default && (a.rows || []).length && !a.error);
+    if (!others.length || !body) return;
+    const fmt = n => Number(n || 0).toLocaleString('id-ID');
+    const rows = others.map(a => `<tr><td><code>${esc(a.id)}</code></td><td>${(a.rows || []).map(r => `${esc(r.model)} · ${esc(r.plan_name || '')} · ${fmt(r.remaining)} / ${fmt(r.total)}`).join('<br>')}</td><td><button class="btn sm" type="button" data-acct="${esc(a.id)}">${ZB.lang === 'en' ? 'Use account' : 'Pakai akun'}</button></td></tr>`).join('');
+    body.innerHTML = `<div class="empty"><b>Akun aktif tidak punya plan</b><span class="empty-hint">${esc(msg || 'Tapi akun lain punya plan aktif:')}</span></div>
+      <div class="tablewrap"><table><thead><tr><th>Akun</th><th>Plan</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`;
+    body.querySelectorAll('button[data-acct]').forEach(btn => {
+      btn.onclick = async () => {
+        try {
+          await api('/v1/accounts/switch', { method: 'POST', body: JSON.stringify({ id: btn.dataset.acct }) });
+          toast(ZB.lang === 'en' ? 'Account switched' : 'Akun diganti', 'ok');
+          scanClaim();
+        } catch (e) { toast(e.message, 'bad'); }
+      };
+    });
+  } catch (_) { /* pool is best-effort */ }
 }
 
 /* ---------------- sharing ---------------- */

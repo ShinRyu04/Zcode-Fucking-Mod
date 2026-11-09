@@ -16,6 +16,13 @@ versions follow [SemVer](https://semver.org/).
 ### Changed
 - `.gitignore` now blocks `logs/`, `data/`, JWT files and `*.bak-*` backups.
 
+## [0.1.6-mod] - 2026-11-09
+
+### Added
+- Claim page now points at accounts that do have a live plan: when the
+  active account has nothing, it lists pool accounts with plan grants and a
+  one-click "Pakai akun"/"Use account" switch, then rescans.
+
 ## [0.1.5-mod] - 2026-11-09
 
 ### Added
