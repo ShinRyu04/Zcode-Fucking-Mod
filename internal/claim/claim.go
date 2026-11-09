@@ -344,9 +344,83 @@ func marketingPlans(ctx context.Context, hc *http.Client, cfg Config, jwt string
 	return out
 }
 
+// VerificationConfig mirrors the app's Aliyun captcha config. The dashboard
+// loads the SDK with these values and the user solves the challenge.
+type VerificationConfig struct {
+	Enabled          bool   `json:"enabled"`
+	Region           string `json:"region"`
+	Prefix           string `json:"prefix"`
+	SceneID          string `json:"scene_id"`
+	SkipModelRequest bool   `json:"skip_model_request"`
+}
+
+// VerificationConfigFor reads the client captcha config for the active
+// account (the same `data.configs.captcha` object the app uses).
+func VerificationConfigFor(ctx context.Context) (VerificationConfig, error) {
+	cfg := LoadConfig()
+	jwt := resolveJWT()
+	if jwt == "" {
+		return VerificationConfig{}, fmt.Errorf("claim requires a plan JWT (run zcode-bridge login)")
+	}
+	hc := &http.Client{Timeout: cfg.Timeout}
+	h := headerAuth(jwt)
+	h["Accept"] = "application/json"
+	h["X-ZCode-App-Version"] = appVersion()
+	h["X-Client-Language"] = "zh-CN"
+	h["User-Agent"] = "zcode/" + appVersion()
+	u := cfg.Origin + "/api/v1/client/configs?app_version=" + url.QueryEscape(appVersion()) +
+		"&platform=" + url.QueryEscape(clientPlatform())
+	env, apiErr := doJSON(ctx, hc, http.MethodGet, u, h, nil)
+	if apiErr != nil {
+		return VerificationConfig{}, apiErr
+	}
+	var out VerificationConfig
+	data, _ := env["data"].(map[string]any)
+	configs, _ := data["configs"].(map[string]any)
+	cap, _ := configs["captcha"].(map[string]any)
+	if cap == nil {
+		return out, nil
+	}
+	if v, ok := cap["enabled"].(bool); ok {
+		out.Enabled = v
+	}
+	out.Region, _ = cap["region"].(string)
+	out.Prefix, _ = cap["prefix"].(string)
+	out.SceneID, _ = cap["sceneId"].(string)
+	if out.SceneID == "" {
+		out.SceneID, _ = cap["scene_id"].(string)
+	}
+	if v, ok := cap["skip_model_request"].(bool); ok {
+		out.SkipModelRequest = v
+	}
+	return out, nil
+}
+
+func clientPlatform() string {
+	osName := runtime.GOOS
+	switch osName {
+	case "windows":
+		osName = "win32"
+	}
+	arch := runtime.GOARCH
+	switch arch {
+	case "amd64":
+		arch = "x64"
+	case "386":
+		arch = "ia32"
+	}
+	return osName + "-" + arch
+}
+
 // Claim posts one plan id to the billing claim endpoint. Captcha-gated
 // campaigns cannot be solved here; the error names that case.
 func Claim(ctx context.Context, planID string) (Outcome, error) {
+	return ClaimWithVerification(ctx, planID, "", "")
+}
+
+// ClaimWithVerification posts a claim carrying an Aliyun captcha token
+// produced by the dashboard widget. Empty param means a plain attempt.
+func ClaimWithVerification(ctx context.Context, planID, verifyParam, verifyRegion string) (Outcome, error) {
 	cfg := LoadConfig()
 	hc := &http.Client{Timeout: cfg.Timeout}
 	jwt := resolveJWT()
@@ -361,6 +435,12 @@ func Claim(ctx context.Context, planID string) (Outcome, error) {
 	}
 	if mid := claimDeviceMid(); mid != "" {
 		headers["X-Device-Mid"] = mid
+	}
+	if v := strings.TrimSpace(verifyParam); v != "" {
+		headers["X-Aliyun-Captcha-Verify-Param"] = v
+		if r := strings.TrimSpace(verifyRegion); r != "" {
+			headers["X-Aliyun-Captcha-Verify-Region"] = r
+		}
 	}
 	env, apiErr := doJSON(ctx, hc, http.MethodPost, cfg.Origin+"/api/v1/zcode-plan/billing/claim", headers, map[string]any{"plan_id": planID})
 	if apiErr != nil {
@@ -392,6 +472,12 @@ func Claim(ctx context.Context, planID string) (Outcome, error) {
 // ClaimBest lists plans and claims the configured plan or the highest
 // priority one. It returns the outcome and any error.
 func ClaimBest(ctx context.Context) (Outcome, error) {
+	return ClaimBestWithVerification(ctx, "", "")
+}
+
+// ClaimBestWithVerification resolves the target plan, then claims it with
+// the given captcha token.
+func ClaimBestWithVerification(ctx context.Context, verifyParam, verifyRegion string) (Outcome, error) {
 	cfg := LoadConfig()
 	target := cfg.PlanID
 	if target == "" {
@@ -404,7 +490,7 @@ func ClaimBest(ctx context.Context) (Outcome, error) {
 		}
 		target = plans[0].PlanID
 	}
-	return Claim(ctx, target)
+	return ClaimWithVerification(ctx, target, verifyParam, verifyRegion)
 }
 
 // ErrNothingToClaim means no campaign is live for this account.

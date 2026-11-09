@@ -16,6 +16,16 @@ versions follow [SemVer](https://semver.org/).
 ### Changed
 - `.gitignore` now blocks `logs/`, `data/`, JWT files and `*.bak-*` backups.
 
+## [0.1.5-mod] - 2026-11-09
+
+### Added
+- Dashboard claim now runs the real Aliyun captcha widget when the gateway
+  asks for it: `GET /v1/claim/verification-config` exposes the app's
+  `data.configs.captcha` (region/prefix/scene id), the page loads the same
+  `AliyunCaptcha.js`, and `POST /v1/claim` forwards the solved
+  `captchaVerifyParam` as `X-Aliyun-Captcha-Verify-Param`. The user solves
+  the challenge; nothing is bypassed. Fallback stays: claim from the app.
+
 ## [0.1.4-mod] - 2026-11-09
 
 ### Removed

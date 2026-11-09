@@ -1080,11 +1080,93 @@ function pageClaim(view) {
   <div class="card mt14" id="cbody"><div class="empty"><b>Belum ada plan aktif</b><span class="empty-hint">Tekan “Cek plan” untuk memindai penawaran weekend/trial.</span></div></div>
   <div class="card mt14"><h2>Riwayat klaim</h2><div id="chist"><div class="empty">Memuat…</div></div></div>`;
   $('#cscan').onclick = () => scanClaim();
-  $('#cnow').onclick = async () => {
-    try { const r = await api('/v1/claim', { method: 'POST', body: '{}' }); toast(r.message || 'Permintaan klaim dikirim', 'ok'); scanClaim(); }
-    catch (e) { toast(e.message, 'bad'); }
-  };
+  $('#cnow').onclick = () => claimNow();
   scanClaim();
+}
+
+const CLAIM_CAPTCHA_SDK = 'https://o.alicdn.com/captcha-frontend/aliyunCaptcha/AliyunCaptcha.js';
+let claimCaptchaScript = null;
+
+function loadClaimCaptchaSdk() {
+  if (claimCaptchaScript) return claimCaptchaScript;
+  claimCaptchaScript = new Promise((resolve, reject) => {
+    if (window.initAliyunCaptcha) { resolve(); return; }
+    const s = document.createElement('script');
+    s.src = CLAIM_CAPTCHA_SDK;
+    s.async = true;
+    s.onload = () => resolve();
+    s.onerror = () => {
+      claimCaptchaScript = null;
+      reject(new Error(ZB.lang === 'en' ? 'Captcha SDK failed to load' : 'Gagal memuat SDK captcha'));
+    };
+    document.head.appendChild(s);
+  });
+  return claimCaptchaScript;
+}
+
+function solveClaimCaptcha() {
+  return api('/v1/claim/verification-config').then(cfgRes => {
+    const cfg = cfgRes.config || {};
+    if (!cfg.enabled || !cfg.region || !cfg.prefix || !cfg.scene_id) {
+      throw new Error(ZB.lang === 'en' ? 'Claim needs captcha: open the ZCode app and press Claim' : 'Klaim butuh captcha: buka app ZCode lalu tekan Claim');
+    }
+    return loadClaimCaptchaSdk().then(() => new Promise((resolve, reject) => {
+      const wrap = document.createElement('div');
+      wrap.style.cssText = 'position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.55)';
+      wrap.innerHTML = '<div style="background:var(--panel,#12161c);color:var(--fg,#e6edf3);border:1px solid var(--line,#2a3038);border-radius:14px;padding:20px 22px;max-width:360px;text-align:center">' +
+        '<div style="font-weight:600;margin-bottom:6px">' + (ZB.lang === 'en' ? 'Security check' : 'Verifikasi keamanan') + '</div>' +
+        '<p class="small muted" style="margin:0 0 14px">' + (ZB.lang === 'en' ? 'Solve the captcha to claim this plan.' : 'Selesaikan captcha untuk mengklaim plan ini.') + '</p>' +
+        '<div id="zbCaptcha"></div>' +
+        '<button id="zbCaptchaBtn" class="btn primary" type="button">' + (ZB.lang === 'en' ? 'Verify' : 'Verifikasi') + '</button> ' +
+        '<button id="zbCaptchaCancel" class="btn ghost" type="button">' + (ZB.lang === 'en' ? 'Cancel' : 'Batal') + '</button>' +
+        '</div>';
+      document.body.appendChild(wrap);
+      const done = v => { wrap.remove(); resolve({ param: v, region: cfg.region }); };
+      const fail = e => { wrap.remove(); reject(new Error(typeof e === 'string' && e ? e : (ZB.lang === 'en' ? 'Captcha failed' : 'Captcha gagal'))); };
+      wrap.querySelector('#zbCaptchaCancel').onclick = () => fail('');
+      try {
+        window.AliyunCaptchaConfig = { region: cfg.region, prefix: cfg.prefix };
+        window.initAliyunCaptcha({
+          SceneId: cfg.scene_id,
+          region: cfg.region,
+          prefix: cfg.prefix,
+          mode: 'popup',
+          language: ZB.lang === 'en' ? 'en' : 'cn',
+          showErrorTip: true,
+          element: '#zbCaptcha',
+          button: '#zbCaptchaBtn',
+          getInstance: inst => { try { if (inst && typeof inst.show === 'function') inst.show(); } catch (_) {} },
+          success: param => { const p = typeof param === 'string' ? param.trim() : ''; p ? done(p) : fail(''); },
+          fail: fail,
+        });
+      } catch (e) {
+        fail(e && e.message);
+      }
+    }));
+  });
+}
+
+async function claimNow() {
+  const btn = $('#cnow');
+  if (btn) btn.disabled = true;
+  try {
+    try {
+      const r = await api('/v1/claim', { method: 'POST', body: '{}' });
+      toast(r.message || (ZB.lang === 'en' ? 'Claim request sent' : 'Permintaan klaim dikirim'), 'ok');
+      scanClaim();
+      return;
+    } catch (e) {
+      if (!/captcha|3007/i.test(e.message)) throw e;
+    }
+    const solved = await solveClaimCaptcha();
+    const r = await api('/v1/claim', { method: 'POST', body: JSON.stringify({ captcha_param: solved.param, captcha_region: solved.region }) });
+    toast(r.message || (ZB.lang === 'en' ? 'Plan claimed' : 'Plan berhasil diklaim'), 'ok');
+    scanClaim();
+  } catch (e) {
+    toast(e.message, 'bad');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
 }
 
 async function scanClaim() {

@@ -75,6 +75,19 @@ func handleClaimList(w http.ResponseWriter, r *http.Request) {
 	sendJSON(w, 200, out)
 }
 
+// handleClaimVerificationConfig exposes the Aliyun captcha config so the
+// dashboard can run the same widget the desktop app uses. Token-gated.
+func handleClaimVerificationConfig(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+	cfg, err := claim.VerificationConfigFor(ctx)
+	if err != nil {
+		sendJSON(w, 502, map[string]any{"ok": false, "error": err.Error()})
+		return
+	}
+	sendJSON(w, 200, map[string]any{"ok": true, "config": cfg})
+}
+
 // handleClaimNow claims the configured plan or the highest-priority live one.
 func handleClaimNow(w http.ResponseWriter, r *http.Request) {
 	raw, err := readBody(r)
@@ -83,16 +96,20 @@ func handleClaimNow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var payload struct {
-		PlanID string `json:"plan_id"`
+		PlanID        string `json:"plan_id"`
+		CaptchaParam  string `json:"captcha_param"`
+		CaptchaRegion string `json:"captcha_region"`
 	}
 	_ = json.Unmarshal(raw, &payload)
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
 	var out claim.Outcome
+	param := strings.TrimSpace(payload.CaptchaParam)
+	region := strings.TrimSpace(payload.CaptchaRegion)
 	if strings.TrimSpace(payload.PlanID) != "" {
-		out, err = claim.Claim(ctx, strings.TrimSpace(payload.PlanID))
+		out, err = claim.ClaimWithVerification(ctx, strings.TrimSpace(payload.PlanID), param, region)
 	} else {
-		out, err = claim.ClaimBest(ctx)
+		out, err = claim.ClaimBestWithVerification(ctx, param, region)
 	}
 	if err != nil {
 		recordClaim(out, err)

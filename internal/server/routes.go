@@ -82,6 +82,10 @@ func route(w http.ResponseWriter, r *http.Request) {
 		if requireObservabilityToken(w, r) {
 			handleClaimHistory(w, r)
 		}
+	case r.Method == http.MethodGet && pathName == "/v1/claim/verification-config":
+		if requireObservabilityToken(w, r) {
+			handleClaimVerificationConfig(w, r)
+		}
 	case r.Method == http.MethodGet && pathName == "/v1/claim":
 		if requireObservabilityToken(w, r) {
 			handleClaimList(w, r)
