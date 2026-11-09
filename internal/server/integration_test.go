@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -72,6 +73,63 @@ func TestAgentKeyLifecycle(t *testing.T) {
 	code, _ = integrationRequest(t, http.MethodGet, "/v1/settings", "")
 	if code != 200 {
 		t.Fatalf("settings after delete = %d, want 200", code)
+	}
+}
+
+// TestAgentKeyCustom stores a caller-supplied key and rejects invalid shapes.
+func TestAgentKeyCustom(t *testing.T) {
+	setupBridge(t)
+	path := filepath.Join(t.TempDir(), "agent-key.json")
+	t.Setenv("ZCODE_AGENT_KEY_FILE", path)
+
+	post := func(payload, bearer string) (int, map[string]any) {
+		t.Helper()
+		req, err := http.NewRequest(http.MethodPost, bridgeURL()+"/v1/integration/key", bytes.NewReader([]byte(payload)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		if bearer != "" {
+			req.Header.Set("Authorization", "Bearer "+bearer)
+		}
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer res.Body.Close()
+		var out map[string]any
+		_ = json.NewDecoder(res.Body).Decode(&out)
+		return res.StatusCode, out
+	}
+
+	code, body := post(`{"key":"khalidganteng"}`, "")
+	if code != 200 || body["key"] != "khalidganteng" {
+		t.Fatalf("custom key = %d %v", code, body)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rec struct {
+		Key string `json:"key"`
+	}
+	if json.Unmarshal(raw, &rec) != nil || rec.Key != "khalidganteng" {
+		t.Fatalf("stored key = %q", rec.Key)
+	}
+	if code, _ := integrationRequest(t, http.MethodGet, "/v1/settings", "khalidganteng"); code != 200 {
+		t.Fatalf("settings with custom key = %d, want 200", code)
+	}
+	if code, _ := integrationRequest(t, http.MethodGet, "/v1/settings", ""); code != http.StatusUnauthorized {
+		t.Fatalf("settings without key = %d, want 401", code)
+	}
+
+	for _, bad := range []string{`{"key":"bad key"}`, `{"key":"` + strings.Repeat("x", 129) + `"}`} {
+		if code, _ := post(bad, "khalidganteng"); code != http.StatusBadRequest {
+			t.Fatalf("invalid key %q = %d, want 400", bad, code)
+		}
+	}
+	if raw, err := os.ReadFile(path); err != nil || !strings.Contains(string(raw), "khalidganteng") {
+		t.Fatalf("key file changed after invalid input: %s", raw)
 	}
 }
 

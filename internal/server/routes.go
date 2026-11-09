@@ -64,8 +64,6 @@ func route(w http.ResponseWriter, r *http.Request) {
 		if requireObservabilityToken(w, r) {
 			handleSettings(w, r)
 		}
-	case r.Method == http.MethodGet && (pathName == "/overlay" || strings.HasPrefix(pathName, "/overlay/")):
-		handleOverlay(w, r)
 	case r.Method == http.MethodGet && (pathName == "/inspect" || pathName == "/inspector"):
 		if requireObservabilityToken(w, r) {
 			handleInspect(w, r)

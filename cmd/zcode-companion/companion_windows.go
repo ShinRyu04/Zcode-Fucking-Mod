@@ -165,8 +165,8 @@ const (
 )
 
 var (
-	menuIDs = struct{ dashboard, overlay, autostart, update, restart, quit uintptr }{
-		1, 2, 3, 4, 5, 6,
+	menuIDs = struct{ dashboard, autostart, update, restart, quit uintptr }{
+		1, 2, 3, 4, 5,
 	}
 	companionHWnd uintptr
 	companionIcon uintptr
@@ -505,7 +505,6 @@ func showTrayMenu(hwnd uintptr) {
 	}
 	defer procDestroyMenu.Call(hMenu)
 	appendItem(hMenu, menuIDs.dashboard, "Buka dashboard")
-	appendItem(hMenu, menuIDs.overlay, "Overlay kapsul")
 	procAppendMenuW.Call(hMenu, mfSeparator, 0, 0)
 	autoFlags := uintptr(mfString)
 	if on, err := autostartState(); err == nil && on {
@@ -533,8 +532,6 @@ func handleCommand(id uint32) {
 	case 1:
 		openURL(bridgeBaseURL() + "/dashboard")
 	case 2:
-		openURL(bridgeBaseURL() + "/overlay/capsule")
-	case 3:
 		on, err := autostartState()
 		if err != nil {
 			messageBox("Autostart: "+err.Error(), mbIconWarning)
@@ -549,16 +546,16 @@ func handleCommand(id uint32) {
 		} else {
 			messageBox("Autostart dimatikan.", mbIconInfo)
 		}
-	case 4:
+	case 3:
 		info, err := checkLatestRelease(companionVersion)
 		if err != nil {
 			messageBox("Periksa pembaruan: "+err.Error(), mbIconWarning)
 			return
 		}
 		messageBox(strings.TrimSpace(info.String()), mbIconInfo)
-	case 5:
+	case 4:
 		sup.restart()
-	case 6:
+	case 5:
 		quitRequested = true
 		sup.stop()
 		procDestroyWindow.Call(companionHWnd)

@@ -275,7 +275,6 @@ pre{background:#0f131b;border:1px solid var(--line);border-radius:8px;padding:12
 <footer>
 <div class="controls">
 <button type="button" id="refresh">Muat ulang</button>
-<a class="btn" href="/overlay" target="_blank" rel="noopener">Overlay t/s</a>
 <label><input type="checkbox" id="auto" checked> auto 15 dtk</label>
 </div>
 <div><span id="stamp">-</span><span id="ver" class="dim"></span></div>

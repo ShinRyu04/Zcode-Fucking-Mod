@@ -5,6 +5,8 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -121,22 +123,50 @@ func handleIntegration(w http.ResponseWriter, r *http.Request) {
 	sendJSON(w, 200, out)
 }
 
-// handleIntegrationKey generates or rotates the persisted downstream key.
+// handleIntegrationKey generates, rotates, or sets the persisted downstream key.
+// A JSON body {"key":"..."} stores that exact key; an empty body generates one.
 func handleIntegrationKey(w http.ResponseWriter, r *http.Request) {
 	if cfg.BridgeToken != "" {
 		sendJSON(w, 409, map[string]any{"ok": false, "error": "ZCODE_BRIDGE_TOKEN is set; rotate it in the environment"})
 		return
 	}
-	key, err := newAgentKey()
-	if err != nil {
-		sendJSON(w, 500, map[string]any{"ok": false, "error": err.Error()})
-		return
+	var req struct {
+		Key string `json:"key"`
+	}
+	_ = json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&req)
+	custom := strings.TrimSpace(req.Key)
+	var key string
+	if custom != "" {
+		if err := validateAgentKey(custom); err != nil {
+			sendJSON(w, 400, map[string]any{"ok": false, "error": err.Error()})
+			return
+		}
+		key = custom
+	} else {
+		var err error
+		key, err = newAgentKey()
+		if err != nil {
+			sendJSON(w, 500, map[string]any{"ok": false, "error": err.Error()})
+			return
+		}
 	}
 	if err := writeAgentKey(key); err != nil {
 		sendJSON(w, 500, map[string]any{"ok": false, "error": err.Error()})
 		return
 	}
 	sendJSON(w, 200, map[string]any{"ok": true, "key": key, "masked_key": maskKey(key), "key_source": "file"})
+}
+
+func validateAgentKey(key string) error {
+	if len(key) > 128 {
+		return fmt.Errorf("kunci maksimal 128 karakter")
+	}
+	for _, c := range key {
+		if c < 33 || c > 126 {
+			return fmt.Errorf("kunci hanya boleh ASCII tercetak tanpa spasi")
+		}
+	}
+	return nil
 }
 
 // handleIntegrationKeyDelete removes the persisted key, returning the bridge to
