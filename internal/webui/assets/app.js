@@ -1524,14 +1524,16 @@ function pageClaim(view) {
 const CLAIM_CAPTCHA_SDK = 'https://o.alicdn.com/captcha-frontend/aliyunCaptcha/AliyunCaptcha.js';
 let claimCaptchaScript = null;
 
-function loadClaimCaptchaSdk() {
+function loadClaimCaptchaSdk(cfg) {
   if (claimCaptchaScript) return claimCaptchaScript;
+  // AliyunCaptchaConfig must exist BEFORE the SDK script is evaluated.
+  window.AliyunCaptchaConfig = { region: cfg.region, prefix: cfg.prefix };
   claimCaptchaScript = new Promise((resolve, reject) => {
     if (window.initAliyunCaptcha) { resolve(); return; }
     const s = document.createElement('script');
     s.src = CLAIM_CAPTCHA_SDK;
     s.async = true;
-    s.onload = () => resolve();
+    s.onload = resolve;
     s.onerror = () => {
       claimCaptchaScript = null;
       reject(new Error(ZB.lang === 'en' ? 'Captcha SDK failed to load' : 'Gagal memuat SDK captcha'));
@@ -1547,7 +1549,7 @@ function solveClaimCaptcha() {
     if (!cfg.enabled || !cfg.region || !cfg.prefix || !cfg.scene_id) {
       throw new Error(ZB.lang === 'en' ? 'Claim needs captcha: open the ZCode app and press Claim' : 'Klaim butuh captcha: buka app ZCode lalu tekan Claim');
     }
-    return loadClaimCaptchaSdk().then(() => new Promise((resolve, reject) => {
+    return loadClaimCaptchaSdk(cfg).then(() => new Promise((resolve, reject) => {
       const wrap = document.createElement('div');
       wrap.style.cssText = 'position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.55)';
       wrap.innerHTML = '<div style="background:var(--panel,#12161c);color:var(--fg,#e6edf3);border:1px solid var(--line,#2a3038);border-radius:14px;padding:20px 22px;max-width:360px;text-align:center">' +
@@ -1562,7 +1564,6 @@ function solveClaimCaptcha() {
       const fail = e => { wrap.remove(); reject(new Error(typeof e === 'string' && e ? e : (ZB.lang === 'en' ? 'Captcha failed' : 'Captcha gagal'))); };
       wrap.querySelector('#zbCaptchaCancel').onclick = () => fail('');
       try {
-        window.AliyunCaptchaConfig = { region: cfg.region, prefix: cfg.prefix };
         window.initAliyunCaptcha({
           SceneId: cfg.scene_id,
           region: cfg.region,
@@ -1572,9 +1573,14 @@ function solveClaimCaptcha() {
           showErrorTip: true,
           element: '#zbCaptcha',
           button: '#zbCaptchaBtn',
+          // Aliyun Captcha 2.0: the slide completion lands here with the
+          // captchaVerifyParam. There is no "success" callback.
+          captchaVerifyCallback: param => {
+            const p = (typeof param === 'string' ? param : (param && param.captchaVerifyParam) || '').trim();
+            p ? done(p) : fail('');
+          },
+          onBizResultCallback: () => {},
           getInstance: inst => { try { if (inst && typeof inst.show === 'function') inst.show(); } catch (_) {} },
-          success: param => { const p = typeof param === 'string' ? param.trim() : ''; p ? done(p) : fail(''); },
-          fail: fail,
         });
       } catch (e) {
         fail(e && e.message);
