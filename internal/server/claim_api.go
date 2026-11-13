@@ -39,6 +39,18 @@ func recordClaim(out claim.Outcome, err error) {
 		rec.Message = out.Message
 	}
 	claimHistory.Lock()
+	if rec.Status == "ok" {
+		// A success supersedes failed attempts for the same plan: the red
+		// "perlu-app" row from a captcha retry is noise once the claim lands.
+		kept := claimHistory.entries[:0]
+		for _, e := range claimHistory.entries {
+			if e.Plan == rec.Plan && e.Status != "ok" {
+				continue
+			}
+			kept = append(kept, e)
+		}
+		claimHistory.entries = kept
+	}
 	claimHistory.entries = append([]claimRecord{rec}, claimHistory.entries...)
 	if len(claimHistory.entries) > 50 {
 		claimHistory.entries = claimHistory.entries[:50]
